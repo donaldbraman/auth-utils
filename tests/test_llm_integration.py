@@ -20,6 +20,13 @@ from auth_utils.llm import (
     Message,
 )
 
+# Test models - each repo should define its own
+TEST_MODELS = {
+    "claude": "claude-sonnet-4-20250514",
+    "gemini": "gemini-2.5-flash",
+    "chatgpt": "gpt-4o",
+}
+
 
 def has_api_key(env_var: str) -> bool:
     """Check if an API key is available."""
@@ -62,13 +69,12 @@ class TestLLMClientBasics:
     def test_invalid_provider_raises(self):
         """Should raise ValueError for unknown provider."""
         with pytest.raises(ValueError, match="Unknown provider"):
-            LLMClient(provider="invalid")  # type: ignore
+            LLMClient(provider="invalid", model="test")  # type: ignore
 
-    def test_get_default_model(self):
-        """Should return default models for providers."""
-        assert "claude" in LLMClient.get_default_model("claude")
-        assert "gemini" in LLMClient.get_default_model("gemini")
-        assert "gpt" in LLMClient.get_default_model("chatgpt")
+    def test_model_required(self):
+        """Should raise TypeError when model not provided."""
+        with pytest.raises(TypeError):
+            LLMClient(provider="claude")  # type: ignore
 
 
 @pytest.mark.asyncio
@@ -78,7 +84,7 @@ class TestClaudeIntegration:
     @skip_no_anthropic
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="claude")
+        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
         response = await client.chat(
             messages=[Message(role="user", content="Say 'hello' and nothing else.")],
             max_tokens=50,
@@ -94,7 +100,7 @@ class TestClaudeIntegration:
     @skip_no_anthropic
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="claude")
+        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
         response = await client.chat(
             messages=[
                 Message(role="system", content="You are a pirate. Always say 'Arrr'."),
@@ -109,7 +115,7 @@ class TestClaudeIntegration:
     @skip_no_anthropic
     async def test_dict_messages(self):
         """Should accept dict format messages."""
-        client = LLMClient(provider="claude")
+        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
         response = await client.chat(
             messages=[{"role": "user", "content": "Say 'test' and nothing else."}],
             max_tokens=50,
@@ -126,7 +132,7 @@ class TestGeminiIntegration:
     @skip_no_google
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="gemini")
+        client = LLMClient(provider="gemini", model=TEST_MODELS["gemini"])
         response = await client.chat(
             messages=[Message(role="user", content="Say 'hello' and nothing else.")],
             max_tokens=50,
@@ -140,7 +146,7 @@ class TestGeminiIntegration:
     @skip_no_google
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="gemini")
+        client = LLMClient(provider="gemini", model=TEST_MODELS["gemini"])
         response = await client.chat(
             messages=[
                 Message(role="system", content="Always respond in exactly 3 words."),
@@ -160,7 +166,7 @@ class TestChatGPTIntegration:
     @skip_no_openai
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="chatgpt")
+        client = LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"])
         response = await client.chat(
             messages=[Message(role="user", content="Say 'hello' and nothing else.")],
             max_tokens=50,
@@ -176,7 +182,7 @@ class TestChatGPTIntegration:
     @skip_no_openai
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="chatgpt")
+        client = LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"])
         response = await client.chat(
             messages=[
                 Message(role="system", content="You respond only with 'OK'."),
@@ -200,7 +206,7 @@ class TestParallelExecution:
 
         results = await LLMClient.parallel_chat(
             messages=messages,
-            providers=["claude", "gemini", "chatgpt"],
+            models=TEST_MODELS,
             max_tokens=50,
         )
 
@@ -226,7 +232,7 @@ class TestParallelExecution:
 
         results = await LLMClient.parallel_chat(
             messages=messages,
-            providers=["claude"],
+            models={"claude": TEST_MODELS["claude"]},
             max_tokens=50,
         )
 
@@ -245,7 +251,7 @@ class TestErrorHandling:
         original = os.environ.pop("ANTHROPIC_API_KEY", None)
         try:
             with pytest.raises(AuthenticationError):
-                LLMClient(provider="claude")
+                LLMClient(provider="claude", model=TEST_MODELS["claude"])
         finally:
             if original:
                 os.environ["ANTHROPIC_API_KEY"] = original
@@ -253,7 +259,7 @@ class TestErrorHandling:
     @skip_no_anthropic
     async def test_invalid_api_key_raises_auth_error(self):
         """Should raise AuthenticationError for invalid API key."""
-        client = LLMClient(provider="claude", api_key="invalid-key")
+        client = LLMClient(provider="claude", model=TEST_MODELS["claude"], api_key="invalid-key")
         with pytest.raises((AuthenticationError, APIError)):
             await client.chat(
                 messages=[Message(role="user", content="Hello")],

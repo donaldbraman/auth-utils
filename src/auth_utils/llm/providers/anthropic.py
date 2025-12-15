@@ -27,9 +27,8 @@ class AnthropicProvider(BaseLLMProvider):
     """Claude provider using Anthropic API."""
 
     provider_name = "claude"
-    default_model = "claude-opus-4-5-20251101"
 
-    def __init__(self, model: str | None = None, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None):
         super().__init__(model, api_key)
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not self._api_key:

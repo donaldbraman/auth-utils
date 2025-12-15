@@ -19,13 +19,6 @@ PROVIDERS: dict[Provider, type[BaseLLMProvider]] = {
     "chatgpt": OpenAIProvider,
 }
 
-# Default models for each provider
-DEFAULT_MODELS: dict[Provider, str] = {
-    "claude": "claude-opus-4-5-20251101",
-    "gemini": "gemini-2.5-flash",
-    "chatgpt": "gpt-5.2",
-}
-
 
 class LLMClient:
     """
@@ -48,7 +41,7 @@ class LLMClient:
     def __init__(
         self,
         provider: Provider,
-        model: str | None = None,
+        model: str,
         api_key: str | None = None,
     ):
         """
@@ -56,7 +49,7 @@ class LLMClient:
 
         Args:
             provider: The LLM provider to use ("claude", "gemini", or "chatgpt").
-            model: Optional model identifier. If None, uses provider's default.
+            model: Model identifier (required). Each repo should specify its own models.
             api_key: Optional API key. If None, reads from environment variable.
 
         Raises:
@@ -122,7 +115,7 @@ class LLMClient:
     async def parallel_chat(
         cls,
         messages: Sequence[Message | dict],
-        providers: Sequence[Provider] | None = None,
+        models: dict[Provider, str],
         max_tokens: int = 4096,
         temperature: float = 0.7,
         **kwargs,
@@ -132,7 +125,7 @@ class LLMClient:
 
         Args:
             messages: List of conversation messages.
-            providers: List of providers to use. Defaults to all three.
+            models: Dictionary mapping providers to model identifiers.
             max_tokens: Maximum tokens in response.
             temperature: Sampling temperature.
             **kwargs: Provider-specific parameters.
@@ -145,7 +138,11 @@ class LLMClient:
         Example:
             >>> results = await LLMClient.parallel_chat(
             ...     messages=[Message(role="user", content="Hello!")],
-            ...     providers=["claude", "gemini", "chatgpt"]
+            ...     models={
+            ...         "claude": "claude-opus-4-5-20251101",
+            ...         "gemini": "gemini-2.5-flash",
+            ...         "chatgpt": "gpt-5.2",
+            ...     }
             ... )
             >>> for provider, result in results.items():
             ...     if isinstance(result, LLMResponse):
@@ -153,13 +150,13 @@ class LLMClient:
             ...     else:
             ...         print(f"{provider} failed: {result}")
         """
-        if providers is None:
-            providers = list(PROVIDERS.keys())
 
-        async def safe_chat(provider: Provider) -> tuple[Provider, LLMResponse | LLMError]:
+        async def safe_chat(
+            provider: Provider, model: str
+        ) -> tuple[Provider, LLMResponse | LLMError]:
             """Chat with error capture instead of raising."""
             try:
-                client = cls(provider=provider)
+                client = cls(provider=provider, model=model)
                 response = await client.chat(
                     messages=messages,
                     max_tokens=max_tokens,
@@ -171,7 +168,7 @@ class LLMClient:
                 return provider, e
 
         # Run all providers in parallel
-        tasks = [safe_chat(provider) for provider in providers]
+        tasks = [safe_chat(provider, model) for provider, model in models.items()]
         results = await asyncio.gather(*tasks)
 
         return dict(results)
@@ -180,8 +177,3 @@ class LLMClient:
     def get_available_providers(cls) -> list[Provider]:
         """Return list of available provider names."""
         return list(PROVIDERS.keys())
-
-    @classmethod
-    def get_default_model(cls, provider: Provider) -> str:
-        """Get the default model for a provider."""
-        return DEFAULT_MODELS.get(provider, "unknown")

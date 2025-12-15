@@ -16,9 +16,8 @@ class GoogleProvider(BaseLLMProvider):
     """Gemini provider using Google Generative AI API."""
 
     provider_name = "gemini"
-    default_model = "gemini-2.5-flash"
 
-    def __init__(self, model: str | None = None, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None):
         super().__init__(model, api_key)
         self._api_key = api_key or os.environ.get("GOOGLE_API_KEY")
         if not self._api_key:

@@ -11,17 +11,16 @@ class BaseLLMProvider(ABC):
     """Abstract base class for LLM providers."""
 
     provider_name: str
-    default_model: str
 
-    def __init__(self, model: str | None = None, api_key: str | None = None):
+    def __init__(self, model: str, api_key: str | None = None):
         """
         Initialize the provider.
 
         Args:
-            model: Model identifier. If None, uses default_model.
+            model: Model identifier (required).
             api_key: API key. If None, reads from environment variable.
         """
-        self.model = model or self.default_model
+        self.model = model
         self.api_key = api_key
 
     @abstractmethod

@@ -50,11 +50,8 @@ Or create a `.env` file (ensure it's in `.gitignore`).
 ```python
 from auth_utils.llm import LLMClient, Message, LLMResponse
 
-# Use default model for provider
-client = LLMClient(provider="claude")
-
-# Or specify a model
-client = LLMClient(provider="claude", model="claude-opus-4-5-20251101")
+# Model is required - each repo specifies its own
+client = LLMClient(provider="claude", model="claude-sonnet-4-20250514")
 
 # Send a message
 response = await client.chat([
@@ -65,7 +62,7 @@ print(response.content)
 print(f"Tokens: {response.usage.total_tokens}")
 ```
 
-### Specifying Models Per Repo
+### Specifying Models
 
 Each repo should specify its own models based on its needs:
 
@@ -96,7 +93,11 @@ from auth_utils.llm import LLMClient, Message, LLMResponse, LLMError
 
 results = await LLMClient.parallel_chat(
     messages=[Message(role="user", content="Summarize Marbury v. Madison")],
-    providers=["claude", "gemini", "chatgpt"],
+    models={
+        "claude": "claude-sonnet-4-20250514",
+        "gemini": "gemini-2.5-flash",
+        "chatgpt": "gpt-4o",
+    },
 )
 
 for provider, result in results.items():
