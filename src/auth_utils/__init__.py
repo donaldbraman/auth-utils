@@ -1,5 +1,5 @@
 """
-auth-utils: Shared LLM authentication infrastructure for multi-provider support.
+auth-utils: Shared authentication infrastructure for LLM providers and Google/Zotero APIs.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
