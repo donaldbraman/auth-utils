@@ -5,57 +5,50 @@ Shared authentication infrastructure for LLM providers and Google/Zotero APIs.
 ## Installation
 
 ```bash
-# Install from GitHub
-pip install git+https://github.com/donaldbraman/auth-utils.git
-
-# Or with uv
 uv add git+https://github.com/donaldbraman/auth-utils.git
 ```
 
+For sibling repos, see [docs/integration-guide.md](docs/integration-guide.md).
+
 ## Features
 
-- **LLM Providers**: Unified client for Claude, Gemini, and ChatGPT
-- **Google OAuth**: OAuth 2.0 for Google Docs, Drive, Sheets, etc.
-- **Zotero API**: Authentication for Zotero citation management
+- **LLM Providers**: Unified client for Claude, Gemini, ChatGPT
+- **Google OAuth**: OAuth 2.0 for Docs, Drive, Sheets
+- **Google Service Account**: For server automation
+- **Zotero API**: Authentication for citation management
 
 ## LLM Client
 
-### Configuration
-
-Set API keys as environment variables:
-
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-export GOOGLE_API_KEY="..."
+export ANTHROPIC_API_KEY="sk-ant-..."   # Claude
+export GOOGLE_API_KEY="..."              # Gemini
+export OPENAI_API_KEY="sk-..."           # ChatGPT
 ```
-
-### Usage
 
 ```python
 from auth_utils.llm import LLMClient, Message
 
-# Create a client for a specific provider
-client = LLMClient(provider="claude")  # or "gemini" or "chatgpt"
+# Model is REQUIRED
+client = LLMClient(provider="gemini", model="gemini-2.5-flash")
 
-# Send a message
 response = await client.chat([
     Message(role="user", content="Hello!")
 ])
 
 print(response.content)
-print(f"Tokens used: {response.usage.total_tokens}")
+print(f"Tokens: {response.usage.total_tokens}")
 ```
 
 ### Parallel Execution
 
 ```python
-from auth_utils.llm import LLMClient, Message, LLMResponse
-
-# Send same prompt to all providers in parallel
 results = await LLMClient.parallel_chat(
     messages=[Message(role="user", content="Hello!")],
-    providers=["claude", "gemini", "chatgpt"]
+    models={
+        "claude": "claude-sonnet-4-20250514",
+        "gemini": "gemini-2.5-flash",
+        "chatgpt": "gpt-4o",
+    },
 )
 
 for provider, result in results.items():
@@ -65,114 +58,72 @@ for provider, result in results.items():
         print(f"{provider} error: {result}")
 ```
 
-### Supported LLM Providers
+### Error Handling
 
-| Provider | Environment Variable | Default Model |
-|----------|---------------------|---------------|
-| `claude` | `ANTHROPIC_API_KEY` | `claude-opus-4-5-20251101` |
-| `gemini` | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
-| `chatgpt` | `OPENAI_API_KEY` | `gpt-5.2` |
+```python
+from auth_utils.llm import AuthenticationError, RateLimitError, APIError
+
+try:
+    response = await client.chat([Message(role="user", content="Hello")])
+except AuthenticationError as e:
+    print(f"Invalid API key for {e.provider}")
+except RateLimitError as e:
+    print(f"Rate limited, retry after {e.retry_after}s")
+except APIError as e:
+    print(f"API error ({e.status_code}): {e}")
+```
 
 ## Google OAuth
-
-OAuth 2.0 authentication for Google APIs (Docs, Drive, Sheets, etc.).
-
-### Setup
-
-1. Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Download as `credentials.json`
-
-### Usage
 
 ```python
 from auth_utils.google import GoogleOAuth
 
-# Initialize with desired scopes
 auth = GoogleOAuth(scopes=["docs", "drive"])
 
-# Check if already authorized
 if not auth.is_authorized():
-    # Start OAuth flow
     url = auth.get_authorization_url()
     print(f"Visit: {url}")
-
-    # After user authorizes, complete the flow
     redirect_url = input("Paste redirect URL: ")
     auth.fetch_token(redirect_url)
 
-# Build Google API services
-docs_service = auth.build_service("docs", "v1")
-drive_service = auth.build_service("drive", "v3")
+docs = auth.build_service("docs", "v1")
 ```
 
-### Available Scopes
+## Google Service Account
 
-| Scope Name | Permission |
-|------------|------------|
-| `docs` | Read/write Google Docs |
-| `docs_readonly` | Read-only Google Docs |
-| `drive` | Full Google Drive access |
-| `drive_readonly` | Read-only Drive access |
-| `drive_file` | Per-file Drive access |
-| `sheets` | Read/write Google Sheets |
-| `sheets_readonly` | Read-only Sheets |
-| `gmail` | Modify Gmail |
-| `calendar` | Full Calendar access |
+```python
+from auth_utils.google import GoogleServiceAccount
 
-## Zotero API
+auth = GoogleServiceAccount(key_path="service_account_key.json", scopes=["docs", "drive"])
+print(auth.email)  # Share docs with this email
 
-Authentication for Zotero citation management.
+docs = auth.build_service("docs", "v1")
+```
 
-### Configuration
+## Zotero
 
 ```bash
-export ZOTERO_API_KEY="your-api-key"
+export ZOTERO_API_KEY="..."
 export ZOTERO_LIBRARY_ID="12345"
 export ZOTERO_LIBRARY_TYPE="user"  # or "group"
 ```
 
-### Usage
-
 ```python
 from auth_utils.zotero import ZoteroClient
 
-# Initialize from environment variables
 client = ZoteroClient()
-
-# Or with explicit parameters
-client = ZoteroClient(
-    api_key="your-api-key",
-    library_id="12345",
-    library_type="user"
-)
-
-# Get items
 items = client.get_items(limit=10)
-
-# Search
 results = client.search_items("machine learning")
-
-# Get Zotero URIs for citations
-uri = client.get_item_uri("ABC123")
-# -> http://zotero.org/users/12345/items/ABC123
 ```
 
 ## Development
 
 ```bash
-# Clone the repo
 git clone https://github.com/donaldbraman/auth-utils.git
 cd auth-utils
-
-# Install with dev dependencies
 uv sync --all-extras
-
-# Run tests
 uv run pytest
-
-# Format and lint
-uv run ruff check --fix
-uv run ruff format
+uv run ruff check --fix && uv run ruff format
 ```
 
 ## License

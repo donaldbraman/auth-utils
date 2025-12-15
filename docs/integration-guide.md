@@ -1,6 +1,25 @@
 # Integration Guide
 
-Add auth-utils to your `pyproject.toml`:
+## Installation
+
+**For sibling repos (cite-assist, pin-citer, etc.):**
+
+```toml
+# pyproject.toml
+[project]
+dependencies = [
+    "auth-utils",
+]
+
+[tool.uv.sources]
+auth-utils = { path = "../auth-utils", editable = true }
+```
+
+```bash
+uv sync
+```
+
+**For external repos:**
 
 ```toml
 [project]
@@ -10,10 +29,6 @@ dependencies = [
 
 [tool.hatch.metadata]
 allow-direct-references = true
-```
-
-```bash
-uv sync
 ```
 
 ---
@@ -60,12 +75,13 @@ ZOTERO_LIBRARY_TYPE=user
 ## LLM Client
 
 ```python
-from auth_utils.llm import LLMClient, Message, LLMResponse
+from auth_utils.llm import LLMClient, Message
 
-client = LLMClient(provider="claude", model="claude-sonnet-4-20250514")
+# Model is REQUIRED - each repo specifies its own
+client = LLMClient(provider="gemini", model="gemini-2.5-flash")
 
 response = await client.chat([
-    Message(role="system", content="You are a legal writing assistant."),
+    Message(role="system", content="You are a legal assistant."),
     Message(role="user", content="Hello!"),
 ])
 
@@ -110,12 +126,12 @@ except APIError as e:
 
 ## Google Service Account
 
-For automated/server access. No user interaction.
+For server/automation access. No user interaction.
 
 ### Setup
 
-1. Google Cloud Console → IAM & Admin → Service Accounts
-2. Create service account → Keys → Add Key → JSON
+1. Google Cloud Console -> IAM & Admin -> Service Accounts
+2. Create service account -> Keys -> Add Key -> JSON
 3. Save as `auth-utils/google/service_account_key.json`
 4. **Share your Google Docs/Drive with the service account email**
 
@@ -136,11 +152,11 @@ drive = auth.build_service("drive", "v3")
 
 ## Google OAuth 2.0
 
-For accessing a user's personal Google data with their consent.
+For accessing user's personal Google data with consent.
 
 ### Setup
 
-1. Google Cloud Console → APIs & Services → Credentials
+1. Google Cloud Console -> APIs & Services -> Credentials
 2. Create OAuth 2.0 Client ID (Desktop app)
 3. Download JSON to `auth-utils/google/credentials.json`
 
@@ -198,6 +214,30 @@ except ZoteroAuthError:
     print("Authentication failed")
 except ZoteroAPIError as e:
     print(f"API error ({e.status_code}): {e}")
+```
+
+---
+
+## Direct Gemini Model Access
+
+For use cases requiring direct `genai.GenerativeModel` (binary content, PDF extraction):
+
+```python
+# Option 1: Use GoogleProvider to configure, then use genai directly
+from auth_utils.llm.providers.google import GoogleProvider
+
+# This configures genai.configure() internally
+provider = GoogleProvider(model="gemini-2.5-flash-lite")
+
+# Now genai is configured - use directly
+import google.generativeai as genai
+model = genai.GenerativeModel("gemini-2.5-flash-lite")
+response = model.generate_content([prompt, {"mime_type": "application/pdf", "data": pdf_bytes}])
+```
+
+```python
+# Option 2: Create a bridge module (like cite-assist does)
+# See cite-assist/core/auth_bridge.py for example
 ```
 
 ---
