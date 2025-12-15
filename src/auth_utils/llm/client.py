@@ -200,7 +200,4 @@ class LLMClient:
             "chatgpt": "OPENAI_API_KEY",
         }
 
-        return {
-            provider: bool(os.environ.get(env_var))
-            for provider, env_var in env_vars.items()
-        }
+        return {provider: bool(os.environ.get(env_var)) for provider, env_var in env_vars.items()}

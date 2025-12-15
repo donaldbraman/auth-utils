@@ -4,6 +4,10 @@ This module provides OAuth 2.0 authentication for Google APIs with:
 - Automatic token refresh with scope preservation
 - Secure token storage and loading
 - Google API service creation (Docs, Drive, etc.)
+
+Credentials are stored centrally in the auth-utils repo by default:
+    google/credentials.json - OAuth client credentials
+    google/token.json       - OAuth tokens
 """
 
 import json
@@ -17,6 +21,7 @@ from authlib.oauth2 import OAuth2Error
 from google.oauth2.credentials import Credentials as GoogleCredentials
 from googleapiclient.discovery import build
 
+from auth_utils.config import GOOGLE_CREDENTIALS, GOOGLE_TOKEN
 from auth_utils.google.exceptions import (
     CredentialsNotFoundError,
     ScopeMismatchError,
@@ -67,8 +72,8 @@ class GoogleOAuth:
         scopes: list[str] | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
-        token_path: str = "token.json",
-        credentials_path: str = "credentials.json",
+        token_path: str | Path | None = None,
+        credentials_path: str | Path | None = None,
     ):
         """Initialize Google OAuth.
 
@@ -77,11 +82,11 @@ class GoogleOAuth:
                    If None, defaults to ["docs", "drive"].
             client_id: OAuth client ID (loaded from credentials file if not provided).
             client_secret: OAuth client secret (loaded from credentials file if not provided).
-            token_path: Path to store/load tokens.
-            credentials_path: Path to OAuth credentials file from Google Cloud Console.
+            token_path: Path to store/load tokens. Defaults to auth-utils/google/token.json.
+            credentials_path: Path to OAuth credentials file. Defaults to auth-utils/google/credentials.json.
         """
-        self.token_path = Path(token_path)
-        self.credentials_path = Path(credentials_path)
+        self.token_path = Path(token_path) if token_path else GOOGLE_TOKEN
+        self.credentials_path = Path(credentials_path) if credentials_path else GOOGLE_CREDENTIALS
 
         # Resolve scope names to full URLs
         self.required_scopes = self._resolve_scopes(scopes or ["docs", "drive"])

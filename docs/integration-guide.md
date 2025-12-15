@@ -33,6 +33,45 @@ allow-direct-references = true
 
 ---
 
+## Centralized Credentials
+
+All credentials are stored in the auth-utils repo itself. Sibling repos that import auth-utils automatically get access.
+
+```
+auth-utils/
+├── .env                          # API keys (auto-loaded on import)
+├── google/
+│   ├── credentials.json          # OAuth client credentials
+│   ├── token.json                # OAuth tokens
+│   └── service_account_key.json  # Service account key
+```
+
+### Setup
+
+```bash
+# Initialize directory structure and see setup instructions
+auth-utils init
+
+# Check what's configured
+auth-utils status
+```
+
+### .env format
+
+```bash
+# LLM Providers
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=...
+
+# Zotero
+ZOTERO_API_KEY=...
+ZOTERO_LIBRARY_ID=12345
+ZOTERO_LIBRARY_TYPE=user
+```
+
+---
+
 ## LLM Client
 
 ```python
@@ -47,7 +86,6 @@ response = await client.chat([
 ])
 
 print(response.content)
-print(f"Tokens: {response.usage.total_tokens}")
 ```
 
 ### Parallel Execution
@@ -67,14 +105,6 @@ for provider, result in results.items():
         print(f"{provider}: {result.content}")
     else:
         print(f"{provider} error: {result}")
-```
-
-### Environment Variables
-
-```bash
-ANTHROPIC_API_KEY="sk-ant-..."   # Claude
-GOOGLE_API_KEY="..."              # Gemini
-OPENAI_API_KEY="sk-..."           # ChatGPT
 ```
 
 ### Error Handling
@@ -102,7 +132,7 @@ For server/automation access. No user interaction.
 
 1. Google Cloud Console -> IAM & Admin -> Service Accounts
 2. Create service account -> Keys -> Add Key -> JSON
-3. Save as `service_account_key.json` (gitignore it)
+3. Save as `auth-utils/google/service_account_key.json`
 4. **Share your Google Docs/Drive with the service account email**
 
 ### Usage
@@ -110,9 +140,9 @@ For server/automation access. No user interaction.
 ```python
 from auth_utils.google import GoogleServiceAccount
 
-auth = GoogleServiceAccount(key_path="service_account_key.json", scopes=["docs", "drive"])
+auth = GoogleServiceAccount(scopes=["docs", "drive"])  # Uses centralized key
 
-print(auth.email)  # -> your-sa@project.iam.gserviceaccount.com
+print(auth.email)  # Share files with this email
 
 docs = auth.build_service("docs", "v1")
 drive = auth.build_service("drive", "v3")
@@ -128,14 +158,14 @@ For accessing user's personal Google data with consent.
 
 1. Google Cloud Console -> APIs & Services -> Credentials
 2. Create OAuth 2.0 Client ID (Desktop app)
-3. Download JSON as `credentials.json`
+3. Download JSON to `auth-utils/google/credentials.json`
 
 ### Usage
 
 ```python
 from auth_utils.google import GoogleOAuth
 
-auth = GoogleOAuth(scopes=["docs", "drive"])
+auth = GoogleOAuth(scopes=["docs", "drive"])  # Uses centralized credentials
 
 if not auth.is_authorized():
     url = auth.get_authorization_url()
@@ -166,19 +196,11 @@ auth-utils google revoke    # Revoke token
 ```python
 from auth_utils.zotero import ZoteroClient
 
-client = ZoteroClient()  # Uses env vars
+client = ZoteroClient()  # Uses ZOTERO_* from .env
 
 items = client.get_items(limit=10)
 collections = client.get_collections()
 results = client.search_items("machine learning")
-```
-
-### Environment Variables
-
-```bash
-ZOTERO_API_KEY="..."
-ZOTERO_LIBRARY_ID="12345"
-ZOTERO_LIBRARY_TYPE="user"  # or "group"
 ```
 
 ### Error Handling
