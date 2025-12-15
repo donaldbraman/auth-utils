@@ -1,19 +1,26 @@
 """CLI for auth-utils - credential management.
 
 Usage:
-    auth-utils init              # Create directories, show setup instructions
-    auth-utils status            # Show all credential status
-    auth-utils google login      # Interactive OAuth login
-    auth-utils google status     # Show OAuth token status
-    auth-utils google refresh    # Refresh OAuth token
-    auth-utils google revoke     # Revoke OAuth token
+    auth-utils init                        # Create directories, show setup instructions
+    auth-utils status                      # Show all credential status
+    auth-utils test                        # Test all configured credentials
+    auth-utils google login                # Interactive OAuth login
+    auth-utils google status               # Show OAuth token status
+    auth-utils google refresh              # Refresh OAuth token
+    auth-utils google revoke               # Revoke OAuth token
+    auth-utils google import <path>        # Import OAuth credentials
+    auth-utils google import-key <path>    # Import service account key
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
+import shutil
 import sys
 import webbrowser
+from pathlib import Path
 
 
 def cmd_init() -> int:
@@ -122,6 +129,117 @@ def cmd_status() -> int:
     print()
 
     return 0
+
+
+def cmd_test() -> int:
+    """Test all configured credentials."""
+    # Ensure .env is loaded from config
+    import auth_utils.config  # noqa: F401
+
+    print("=" * 60)
+    print("AUTH-UTILS CREDENTIAL TEST")
+    print("=" * 60)
+    print()
+
+    all_passed = True
+
+    # Test LLM Providers
+    print("LLM Providers:")
+    all_passed &= _test_llm_providers()
+    print()
+
+    # Test Google Service Account
+    print("Google Service Account:")
+    all_passed &= _test_google_service_account()
+    print()
+
+    # Test Zotero
+    print("Zotero:")
+    all_passed &= _test_zotero()
+    print()
+
+    if all_passed:
+        print("All configured credentials working!")
+    else:
+        print("Some credentials failed - check output above")
+
+    return 0 if all_passed else 1
+
+
+def _test_llm_providers() -> bool:
+    """Test LLM provider connections."""
+    import os
+
+    all_passed = True
+    test_models = {
+        "claude": ("claude-haiku-4-5-20251001", "ANTHROPIC_API_KEY"),
+        "gemini": ("gemini-2.5-flash-lite", "GOOGLE_API_KEY"),
+        "chatgpt": ("gpt-4o-mini", "OPENAI_API_KEY"),
+    }
+
+    for provider, (model, env_var) in test_models.items():
+        if not os.environ.get(env_var):
+            print(f"  [ ] {provider} - not configured")
+            continue
+
+        try:
+            from auth_utils.llm import LLMClient, Message
+
+            client = LLMClient(provider=provider, model=model)
+            response = asyncio.run(
+                client.chat([Message(role="user", content="Say 'ok' and nothing else")])
+            )
+            if response.content:
+                print(f"  [✓] {provider} - {model}")
+            else:
+                print(f"  [✗] {provider} - empty response")
+                all_passed = False
+        except Exception as e:
+            print(f"  [✗] {provider} - {e}")
+            all_passed = False
+
+    return all_passed
+
+
+def _test_google_service_account() -> bool:
+    """Test Google service account."""
+    from auth_utils.config import GOOGLE_SERVICE_ACCOUNT
+
+    if not GOOGLE_SERVICE_ACCOUNT.exists():
+        print("  [ ] not configured")
+        return True  # Not a failure if not configured
+
+    try:
+        from auth_utils.google import GoogleServiceAccount
+
+        auth = GoogleServiceAccount(scopes=["drive_readonly"])
+        email = auth.email
+        print(f"  [✓] {email}")
+        return True
+    except Exception as e:
+        print(f"  [✗] {e}")
+        return False
+
+
+def _test_zotero() -> bool:
+    """Test Zotero API connection."""
+    import os
+
+    if not os.environ.get("ZOTERO_API_KEY") or not os.environ.get("ZOTERO_LIBRARY_ID"):
+        print("  [ ] not configured")
+        return True  # Not a failure if not configured
+
+    try:
+        from auth_utils.zotero import ZoteroClient
+
+        client = ZoteroClient()
+        items = client.get_items(limit=100)
+        count = len(items)
+        print(f"  [✓] connected - {count}+ items")
+        return True
+    except Exception as e:
+        print(f"  [✗] {e}")
+        return False
 
 
 def _check_status() -> dict:
@@ -256,6 +374,88 @@ def google_revoke(scopes: list[str]) -> int:
     return 0
 
 
+def google_import(source_path: str) -> int:
+    """Import OAuth credentials from a file."""
+    from auth_utils.config import GOOGLE_CREDENTIALS, ensure_google_dir
+
+    source = Path(source_path).expanduser()
+
+    if not source.exists():
+        print(f"Error: File not found: {source}")
+        return 1
+
+    # Validate JSON format
+    try:
+        with open(source) as f:
+            data = json.load(f)
+
+        if "installed" not in data and "web" not in data:
+            print("Error: Invalid OAuth credentials format")
+            print("Expected 'installed' or 'web' key in JSON")
+            return 1
+
+        # Get client ID for confirmation
+        key = "installed" if "installed" in data else "web"
+        client_id = data[key].get("client_id", "unknown")
+
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON: {e}")
+        return 1
+
+    # Create directory and copy
+    ensure_google_dir()
+    shutil.copy2(source, GOOGLE_CREDENTIALS)
+
+    print("Imported OAuth credentials")
+    print(f"  From: {source}")
+    print(f"  To:   {GOOGLE_CREDENTIALS}")
+    print(f"  Client ID: {client_id[:40]}...")
+    print()
+    print("Next: Run 'auth-utils google login' to authorize")
+    return 0
+
+
+def google_import_key(source_path: str) -> int:
+    """Import service account key from a file."""
+    from auth_utils.config import GOOGLE_SERVICE_ACCOUNT, ensure_google_dir
+
+    source = Path(source_path).expanduser()
+
+    if not source.exists():
+        print(f"Error: File not found: {source}")
+        return 1
+
+    # Validate JSON format
+    try:
+        with open(source) as f:
+            data = json.load(f)
+
+        if data.get("type") != "service_account":
+            print("Error: Invalid service account key format")
+            print(f"Expected type 'service_account', got '{data.get('type')}'")
+            return 1
+
+        email = data.get("client_email", "unknown")
+        project = data.get("project_id", "unknown")
+
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON: {e}")
+        return 1
+
+    # Create directory and copy
+    ensure_google_dir()
+    shutil.copy2(source, GOOGLE_SERVICE_ACCOUNT)
+
+    print("Imported service account key")
+    print(f"  From: {source}")
+    print(f"  To:   {GOOGLE_SERVICE_ACCOUNT}")
+    print(f"  Email: {email}")
+    print(f"  Project: {project}")
+    print()
+    print("Remember to share your Google resources with the service account email!")
+    return 0
+
+
 def parse_scopes(scope_str: str | None) -> list[str]:
     """Parse comma-separated scopes."""
     if not scope_str:
@@ -276,6 +476,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # status command
     subparsers.add_parser("status", help="Show all credential status")
+
+    # test command
+    subparsers.add_parser("test", help="Test all configured credentials")
 
     # Google subcommand
     google_parser = subparsers.add_parser("google", help="Google OAuth management")
@@ -322,6 +525,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated scopes (default: docs,drive)",
     )
 
+    # google import
+    import_parser = google_subparsers.add_parser("import", help="Import OAuth credentials")
+    import_parser.add_argument("path", help="Path to credentials.json file")
+
+    # google import-key
+    import_key_parser = google_subparsers.add_parser(
+        "import-key", help="Import service account key"
+    )
+    import_key_parser.add_argument("path", help="Path to service account JSON key file")
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -334,6 +547,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         return cmd_status()
 
+    if args.command == "test":
+        return cmd_test()
+
     if args.command == "google":
         scopes = parse_scopes(getattr(args, "scopes", None))
 
@@ -345,6 +561,10 @@ def main(argv: list[str] | None = None) -> int:
             return google_refresh(scopes)
         elif args.google_command == "revoke":
             return google_revoke(scopes)
+        elif args.google_command == "import":
+            return google_import(args.path)
+        elif args.google_command == "import-key":
+            return google_import_key(args.path)
         else:
             google_parser.print_help()
             return 0
