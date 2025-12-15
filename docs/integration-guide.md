@@ -1,6 +1,6 @@
 # Integration Guide for Sibling Repos
 
-This guide explains how to integrate auth-utils into sibling repositories (write-assist, cite-assist, etc.) for unified LLM access.
+This guide explains how to integrate auth-utils into sibling repositories (write-assist, cite-assist, pin-citer, etc.) for unified authentication and LLM access.
 
 ## Installation
 
@@ -24,38 +24,37 @@ uv sync
 
 ## Environment Setup
 
-Set API keys for the providers you need:
+Set the environment variables for the services you need:
 
 ```bash
+# LLM Providers
 export ANTHROPIC_API_KEY="sk-ant-..."   # Claude
 export GOOGLE_API_KEY="..."              # Gemini
 export OPENAI_API_KEY="sk-..."           # ChatGPT
+
+# Zotero
+export ZOTERO_API_KEY="..."
+export ZOTERO_LIBRARY_ID="12345"
+export ZOTERO_LIBRARY_TYPE="user"        # or "group"
+export ZOTERO_USERNAME="your_username"   # optional, for web URLs
 ```
 
-Or create a `.env` file (ensure it's in `.gitignore`):
+Or create a `.env` file (ensure it's in `.gitignore`).
 
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=...
-OPENAI_API_KEY=sk-...
-```
+---
 
-## Basic Usage
+## LLM Client
 
-### Import the Client
+### Basic Usage
 
 ```python
 from auth_utils.llm import LLMClient, Message, LLMResponse
-```
 
-### Single Provider
-
-```python
 # Use default model for provider
 client = LLMClient(provider="claude")
 
 # Or specify a model
-client = LLMClient(provider="claude", model="claude-sonnet-4-5-20250929")
+client = LLMClient(provider="claude", model="claude-opus-4-5-20251101")
 
 # Send a message
 response = await client.chat([
@@ -71,12 +70,11 @@ print(f"Tokens: {response.usage.total_tokens}")
 Each repo should specify its own models based on its needs:
 
 ```python
-# write-assist: Uses premium models for quality
+# write-assist: Premium models for quality
 client = LLMClient(provider="claude", model="claude-opus-4-5-20251101")
-client = LLMClient(provider="gemini", model="gemini-3-pro-preview")
 client = LLMClient(provider="chatgpt", model="gpt-5.2")
 
-# cite-assist: Uses fast/cheap models for high throughput
+# cite-assist: Fast/cheap models for throughput
 client = LLMClient(provider="gemini", model="gemini-2.5-flash-lite")
 ```
 
@@ -89,16 +87,7 @@ response = await client.chat([
 ])
 ```
 
-### Dict Format (Alternative)
-
-```python
-response = await client.chat([
-    {"role": "system", "content": "You respond in formal academic style."},
-    {"role": "user", "content": "Explain consideration in contract law."},
-])
-```
-
-## Parallel Execution
+### Parallel Execution
 
 Run the same prompt across multiple providers simultaneously:
 
@@ -108,7 +97,6 @@ from auth_utils.llm import LLMClient, Message, LLMResponse, LLMError
 results = await LLMClient.parallel_chat(
     messages=[Message(role="user", content="Summarize Marbury v. Madison")],
     providers=["claude", "gemini", "chatgpt"],
-    max_tokens=500,
 )
 
 for provider, result in results.items():
@@ -118,7 +106,7 @@ for provider, result in results.items():
         print(f"\n{provider} error: {result}")
 ```
 
-## Error Handling
+### Error Handling
 
 ```python
 from auth_utils.llm import (
@@ -130,9 +118,7 @@ from auth_utils.llm import (
 
 try:
     client = LLMClient(provider="claude")
-    response = await client.chat([
-        Message(role="user", content="Hello")
-    ])
+    response = await client.chat([Message(role="user", content="Hello")])
 except AuthenticationError as e:
     print(f"Invalid API key for {e.provider}")
 except RateLimitError as e:
@@ -141,99 +127,266 @@ except APIError as e:
     print(f"API error ({e.status_code}): {e}")
 ```
 
-## Available Models
+### Available Models
 
-### Claude (Anthropic)
+| Provider | Model ID | Use Case |
+|----------|----------|----------|
+| Claude | `claude-opus-4-5-20251101` | Premium quality |
+| Claude | `claude-sonnet-4-5-20250929` | Balanced |
+| Claude | `claude-haiku-4-5-20251001` | Fast |
+| Gemini | `gemini-2.5-flash` | Fast, good quality |
+| Gemini | `gemini-2.5-flash-lite` | Ultra fast, lowest cost |
+| ChatGPT | `gpt-5.2` | Latest flagship |
 
-| Model | API ID | Use Case |
-|-------|--------|----------|
-| Opus 4.5 | `claude-opus-4-5-20251101` | Premium quality, complex reasoning |
-| Sonnet 4.5 | `claude-sonnet-4-5-20250929` | Balanced speed/quality |
-| Haiku 4.5 | `claude-haiku-4-5-20251001` | Fast, cost-effective |
+---
 
-### Gemini (Google)
+## Google OAuth
 
-| Model | API ID | Use Case |
-|-------|--------|----------|
-| 3 Pro Preview | `gemini-3-pro-preview` | Most intelligent |
-| 2.5 Flash | `gemini-2.5-flash` | Fast, good quality |
-| 2.5 Flash Lite | `gemini-2.5-flash-lite` | Ultra fast, lowest cost |
+For accessing Google APIs (Docs, Drive, Sheets, Gmail, Calendar).
 
-### ChatGPT (OpenAI)
+### Prerequisites
 
-| Model | API ID | Use Case |
-|-------|--------|----------|
-| GPT-5.2 | `gpt-5.2` | Latest flagship |
-| GPT-5.1 | `gpt-5.1` | Previous flagship |
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the APIs you need (Docs, Drive, etc.)
+3. Create OAuth 2.0 credentials (Desktop app)
+4. Download `credentials.json` to your project root
+
+### Basic Usage
+
+```python
+from auth_utils.google import GoogleOAuth
+
+# Initialize with scopes you need
+auth = GoogleOAuth(scopes=["docs", "drive"])
+
+# Check if already authorized
+if not auth.is_authorized():
+    # Get authorization URL for user
+    url = auth.get_authorization_url()
+    print(f"Visit: {url}")
+
+    # After user authorizes, get the redirect URL
+    redirect_url = input("Paste redirect URL: ")
+    auth.fetch_token(redirect_url)
+
+# Build Google API service
+docs_service = auth.build_service("docs", "v1")
+drive_service = auth.build_service("drive", "v3")
+```
+
+### Available Scopes
+
+Use friendly names or full URLs:
+
+| Name | Scope URL |
+|------|-----------|
+| `docs` | `googleapis.com/auth/documents` |
+| `docs_readonly` | `googleapis.com/auth/documents.readonly` |
+| `drive` | `googleapis.com/auth/drive` |
+| `drive_readonly` | `googleapis.com/auth/drive.readonly` |
+| `drive_file` | `googleapis.com/auth/drive.file` |
+| `sheets` | `googleapis.com/auth/spreadsheets` |
+| `sheets_readonly` | `googleapis.com/auth/spreadsheets.readonly` |
+| `gmail` | `googleapis.com/auth/gmail.modify` |
+| `gmail_readonly` | `googleapis.com/auth/gmail.readonly` |
+| `calendar` | `googleapis.com/auth/calendar` |
+| `calendar_readonly` | `googleapis.com/auth/calendar.readonly` |
+
+### Token Management
+
+```python
+# Get token info
+info = auth.get_token_info()
+print(f"Status: {info['status']}")
+print(f"Scopes: {info['scopes']}")
+print(f"Expires in: {info['expires_in']}")
+
+# Revoke token
+auth.revoke_token()
+```
+
+### Custom Paths
+
+```python
+auth = GoogleOAuth(
+    scopes=["docs"],
+    token_path="~/.config/myapp/token.json",
+    credentials_path="~/.config/myapp/credentials.json",
+)
+```
+
+### Error Handling
+
+```python
+from auth_utils.google import (
+    GoogleOAuth,
+    GoogleAuthError,
+    CredentialsNotFoundError,
+    TokenError,
+    ScopeMismatchError,
+)
+
+try:
+    auth = GoogleOAuth(scopes=["docs"])
+    creds = auth.get_credentials()
+except CredentialsNotFoundError:
+    print("Missing credentials.json - download from Google Cloud Console")
+except TokenError as e:
+    print(f"Token error: {e}")
+except ScopeMismatchError as e:
+    print(f"Missing scopes: {e.missing_scopes}")
+```
+
+---
+
+## Zotero Client
+
+For accessing the Zotero API (items, collections, search).
+
+### Getting API Credentials
+
+1. Go to [Zotero Settings](https://www.zotero.org/settings/keys)
+2. Create a new API key with the permissions you need
+3. Note your user ID (shown on the keys page)
+
+### Basic Usage
+
+```python
+from auth_utils.zotero import ZoteroClient
+
+# Initialize (reads from env vars if not specified)
+client = ZoteroClient(
+    api_key="your-api-key",
+    library_id="12345",
+    library_type="user",  # or "group"
+)
+
+# Get recent items
+items = client.get_items(limit=10)
+for item in items:
+    print(item["data"]["title"])
+
+# Search items
+results = client.search_items("machine learning")
+
+# Get specific item
+item = client.get_item("ABC12345")
+```
+
+### Environment Variables
+
+Set these to avoid passing credentials in code:
+
+```bash
+export ZOTERO_API_KEY="your-api-key"
+export ZOTERO_LIBRARY_ID="12345"
+export ZOTERO_LIBRARY_TYPE="user"
+export ZOTERO_USERNAME="your_username"  # optional
+```
+
+Then:
+
+```python
+client = ZoteroClient()  # Uses env vars
+```
+
+### Working with Collections
+
+```python
+# Get all collections
+collections = client.get_collections()
+
+# Get items in a collection
+items = client.get_collection_items("COLLECTION_KEY")
+```
+
+### Getting URLs
+
+```python
+# Zotero URI (for linking)
+uri = client.get_item_uri("ABC12345")
+# -> http://zotero.org/users/12345/items/ABC12345
+
+# Web URL (for viewing)
+url = client.get_web_url("ABC12345")
+# -> https://www.zotero.org/username/items/ABC12345
+```
+
+### Local Zotero Support
+
+The client automatically tries local Zotero first (faster, no rate limits):
+
+```python
+# Disable local Zotero fallback
+client = ZoteroClient(local_enabled=False)
+
+# Check if local is available
+if client.is_local_available:
+    print("Using local Zotero")
+```
+
+### Error Handling
+
+```python
+from auth_utils.zotero import ZoteroClient, ZoteroAuthError, ZoteroAPIError
+
+try:
+    client = ZoteroClient()
+    items = client.get_items()
+except ZoteroAuthError as e:
+    print(f"Authentication failed: {e}")
+except ZoteroAPIError as e:
+    print(f"API error ({e.status_code}): {e}")
+```
+
+### Context Manager
+
+```python
+with ZoteroClient() as client:
+    items = client.get_items()
+# Client automatically closed
+```
+
+---
 
 ## Re-export Pattern
 
-For cleaner imports in your repo, create a local re-export module:
+For cleaner imports in your repo:
 
 ```python
-# src/your_repo/llm/__init__.py
+# src/your_repo/auth/__init__.py
 from auth_utils.llm import (
     LLMClient,
     Message,
     LLMResponse,
-    UsageStats,
-    LLMError,
     AuthenticationError,
     RateLimitError,
     APIError,
 )
+from auth_utils.google import GoogleOAuth, GoogleAuthError
+from auth_utils.zotero import ZoteroClient, ZoteroAuthError
 
 __all__ = [
     "LLMClient",
     "Message",
     "LLMResponse",
-    "UsageStats",
-    "LLMError",
     "AuthenticationError",
     "RateLimitError",
     "APIError",
+    "GoogleOAuth",
+    "GoogleAuthError",
+    "ZoteroClient",
+    "ZoteroAuthError",
 ]
 ```
 
 Then import locally:
 
 ```python
-from your_repo.llm import LLMClient, Message
+from your_repo.auth import LLMClient, GoogleOAuth, ZoteroClient
 ```
 
-## Response Structure
-
-```python
-@dataclass
-class LLMResponse:
-    content: str           # The generated text
-    model: str             # Model that generated it
-    provider: str          # "claude", "gemini", or "chatgpt"
-    usage: UsageStats      # Token usage statistics
-    raw_response: Any      # Provider's raw response object
-
-@dataclass
-class UsageStats:
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-    @property
-    def total_tokens(self) -> int:
-        return self.input_tokens + self.output_tokens
-```
-
-## Testing
-
-Integration tests require API keys. Tests skip gracefully without them:
-
-```bash
-# Run with keys set
-export ANTHROPIC_API_KEY="..."
-uv run pytest -v
-
-# Tests will skip if keys are missing
-uv run pytest -v  # Shows SKIPPED for integration tests
-```
+---
 
 ## Updating auth-utils
 
