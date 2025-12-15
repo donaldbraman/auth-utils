@@ -54,6 +54,9 @@ auth-utils init
 
 # Check what's configured
 auth-utils status
+
+# Test all configured credentials
+auth-utils test
 ```
 
 ### .env format
@@ -132,7 +135,10 @@ For server/automation access. No user interaction.
 
 1. Google Cloud Console -> IAM & Admin -> Service Accounts
 2. Create service account -> Keys -> Add Key -> JSON
-3. Save as `auth-utils/google/service_account_key.json`
+3. Import the key:
+   ```bash
+   auth-utils google import-key ~/Downloads/service_account_key.json
+   ```
 4. **Share your Google Docs/Drive with the service account email**
 
 ### Usage
@@ -158,7 +164,10 @@ For accessing user's personal Google data with consent.
 
 1. Google Cloud Console -> APIs & Services -> Credentials
 2. Create OAuth 2.0 Client ID (Desktop app)
-3. Download JSON to `auth-utils/google/credentials.json`
+3. Import credentials:
+   ```bash
+   auth-utils google import ~/Downloads/credentials.json
+   ```
 
 ### Usage
 
@@ -179,10 +188,12 @@ docs = auth.build_service("docs", "v1")
 ### CLI
 
 ```bash
-auth-utils google login     # Interactive OAuth
-auth-utils google status    # Token status
-auth-utils google refresh   # Refresh token
-auth-utils google revoke    # Revoke token
+auth-utils google login               # Interactive OAuth
+auth-utils google status              # Token status
+auth-utils google refresh             # Refresh token
+auth-utils google revoke              # Revoke token
+auth-utils google import <path>       # Import OAuth credentials
+auth-utils google import-key <path>   # Import service account key
 ```
 
 ### Scopes
