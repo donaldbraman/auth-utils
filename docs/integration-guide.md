@@ -141,68 +141,119 @@ except APIError as e:
 
 ---
 
-## Google OAuth
+## Google Authentication
 
-For accessing Google APIs (Docs, Drive, Sheets, Gmail, Calendar).
+Two options for accessing Google APIs (Docs, Drive, Sheets, etc.):
 
-### Prerequisites
+| Method | Use Case | User Interaction |
+|--------|----------|------------------|
+| **Service Account** | Server-to-server, automation | None |
+| **OAuth 2.0** | Access user's personal data | User grants consent |
 
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the APIs you need (Docs, Drive, etc.)
-3. Create OAuth 2.0 credentials (Desktop app)
-4. Download `credentials.json` to your project root
+---
+
+## Google Service Account (Recommended)
+
+For automated/server access. No user interaction required.
+
+### Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → IAM & Admin → Service Accounts
+2. Create or select a service account
+3. Keys tab → Add Key → Create new key → JSON
+4. Save as `service_account_key.json` (add to `.gitignore`)
+
+### Basic Usage
+
+```python
+from auth_utils.google import GoogleServiceAccount
+
+auth = GoogleServiceAccount(
+    key_path="service_account_key.json",
+    scopes=["docs", "drive"]
+)
+
+# Build Google API services
+docs = auth.build_service("docs", "v1")
+drive = auth.build_service("drive", "v3")
+
+# List accessible files
+results = drive.files().list(pageSize=10).execute()
+```
+
+### Granting Access
+
+The service account has its own identity. To access your files, **share them** with the service account email:
+
+```python
+print(auth.email)
+# -> your-service-account@project-id.iam.gserviceaccount.com
+```
+
+Share a Google Doc or Drive folder with this email address.
+
+### Service Account Info
+
+```python
+info = auth.get_info()
+# {
+#     "type": "service_account",
+#     "email": "...",
+#     "project_id": "...",
+#     "scopes": [...],
+# }
+```
+
+### Domain-Wide Delegation (Google Workspace)
+
+For Workspace domains with delegation enabled:
+
+```python
+# Impersonate a user in your domain
+delegated = auth.with_subject("user@yourdomain.com")
+drive = delegated.build_service("drive", "v3")
+```
+
+---
+
+## Google OAuth 2.0
+
+For accessing a user's personal Google data with their consent.
+
+### Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Desktop app)
+3. Download JSON as `credentials.json`
 
 ### Basic Usage
 
 ```python
 from auth_utils.google import GoogleOAuth
 
-# Initialize with scopes you need
 auth = GoogleOAuth(scopes=["docs", "drive"])
 
-# Check if already authorized
+# First time: user must authorize
 if not auth.is_authorized():
-    # Get authorization URL for user
     url = auth.get_authorization_url()
     print(f"Visit: {url}")
-
-    # After user authorizes, get the redirect URL
     redirect_url = input("Paste redirect URL: ")
     auth.fetch_token(redirect_url)
 
-# Build Google API service
-docs_service = auth.build_service("docs", "v1")
-drive_service = auth.build_service("drive", "v3")
+# Build services
+docs = auth.build_service("docs", "v1")
+drive = auth.build_service("drive", "v3")
 ```
-
-### Available Scopes
-
-Use friendly names or full URLs:
-
-| Name | Scope URL |
-|------|-----------|
-| `docs` | `googleapis.com/auth/documents` |
-| `docs_readonly` | `googleapis.com/auth/documents.readonly` |
-| `drive` | `googleapis.com/auth/drive` |
-| `drive_readonly` | `googleapis.com/auth/drive.readonly` |
-| `drive_file` | `googleapis.com/auth/drive.file` |
-| `sheets` | `googleapis.com/auth/spreadsheets` |
-| `sheets_readonly` | `googleapis.com/auth/spreadsheets.readonly` |
-| `gmail` | `googleapis.com/auth/gmail.modify` |
-| `gmail_readonly` | `googleapis.com/auth/gmail.readonly` |
-| `calendar` | `googleapis.com/auth/calendar` |
-| `calendar_readonly` | `googleapis.com/auth/calendar.readonly` |
 
 ### Token Management
 
 ```python
-# Get token info
+# Check token status
 info = auth.get_token_info()
 print(f"Status: {info['status']}")
-print(f"Scopes: {info['scopes']}")
 print(f"Expires in: {info['expires_in']}")
 
-# Revoke token
+# Revoke access
 auth.revoke_token()
 ```
 
@@ -216,10 +267,33 @@ auth = GoogleOAuth(
 )
 ```
 
+---
+
+## Google Auth - Common
+
+### Available Scopes
+
+Both `GoogleServiceAccount` and `GoogleOAuth` use the same scopes:
+
+| Name | Scope |
+|------|-------|
+| `docs` | Google Docs read/write |
+| `docs_readonly` | Google Docs read only |
+| `drive` | Google Drive full access |
+| `drive_readonly` | Google Drive read only |
+| `drive_file` | Drive files created by app |
+| `sheets` | Google Sheets read/write |
+| `sheets_readonly` | Google Sheets read only |
+| `gmail` | Gmail modify |
+| `gmail_readonly` | Gmail read only |
+| `calendar` | Google Calendar read/write |
+| `calendar_readonly` | Google Calendar read only |
+
 ### Error Handling
 
 ```python
 from auth_utils.google import (
+    GoogleServiceAccount,
     GoogleOAuth,
     GoogleAuthError,
     CredentialsNotFoundError,
@@ -228,14 +302,11 @@ from auth_utils.google import (
 )
 
 try:
-    auth = GoogleOAuth(scopes=["docs"])
-    creds = auth.get_credentials()
+    auth = GoogleServiceAccount(key_path="key.json")
 except CredentialsNotFoundError:
-    print("Missing credentials.json - download from Google Cloud Console")
-except TokenError as e:
-    print(f"Token error: {e}")
-except ScopeMismatchError as e:
-    print(f"Missing scopes: {e.missing_scopes}")
+    print("Key file not found")
+except GoogleAuthError as e:
+    print(f"Auth error: {e}")
 ```
 
 ---
@@ -364,7 +435,11 @@ from auth_utils.llm import (
     RateLimitError,
     APIError,
 )
-from auth_utils.google import GoogleOAuth, GoogleAuthError
+from auth_utils.google import (
+    GoogleServiceAccount,
+    GoogleOAuth,
+    GoogleAuthError,
+)
 from auth_utils.zotero import ZoteroClient, ZoteroAuthError
 
 __all__ = [
@@ -374,6 +449,7 @@ __all__ = [
     "AuthenticationError",
     "RateLimitError",
     "APIError",
+    "GoogleServiceAccount",
     "GoogleOAuth",
     "GoogleAuthError",
     "ZoteroClient",
@@ -384,7 +460,7 @@ __all__ = [
 Then import locally:
 
 ```python
-from your_repo.auth import LLMClient, GoogleOAuth, ZoteroClient
+from your_repo.auth import LLMClient, GoogleServiceAccount, ZoteroClient
 ```
 
 ---
