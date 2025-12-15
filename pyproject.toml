@@ -23,6 +23,9 @@ dependencies = [
     "google-auth>=2.0.0",
 ]
 
+[project.scripts]
+auth-utils = "auth_utils.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

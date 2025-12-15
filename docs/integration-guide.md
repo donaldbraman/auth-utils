@@ -226,7 +226,47 @@ For accessing a user's personal Google data with their consent.
 2. Create OAuth 2.0 Client ID (Desktop app)
 3. Download JSON as `credentials.json`
 
-### Basic Usage
+Or use the CLI:
+```bash
+auth-utils google setup
+```
+
+### CLI Usage (Recommended)
+
+The CLI handles the entire OAuth flow:
+
+```bash
+# Interactive login (opens browser)
+auth-utils google login
+
+# Login with specific scopes
+auth-utils google login --scopes docs,drive,sheets
+
+# Don't open browser automatically
+auth-utils google login --no-browser
+
+# Check token status
+auth-utils google status
+
+# Refresh expired token
+auth-utils google refresh
+
+# Revoke and clear token
+auth-utils google revoke
+```
+
+For non-interactive flows (CI/CD, remote servers):
+
+```bash
+# Step 1: Generate authorization URL
+auth-utils google get-url --scopes docs,drive
+
+# Step 2: User visits URL and authorizes
+# Step 3: Complete with redirect URL
+auth-utils google complete "http://localhost:8080/?code=..."
+```
+
+### Python Usage
 
 ```python
 from auth_utils.google import GoogleOAuth
