@@ -20,11 +20,11 @@ from auth_utils.llm import (
     Message,
 )
 
-# Test models - each repo should define its own
+# Cheapest models for testing - each repo defines its own for production
 TEST_MODELS = {
-    "claude": "claude-sonnet-4-20250514",
-    "gemini": "gemini-2.5-flash",
-    "chatgpt": "gpt-4o",
+    "claude": "claude-haiku-4-5-20251001",
+    "gemini": "gemini-2.5-flash-lite",
+    "chatgpt": "gpt-4o-mini",
 }
 
 
