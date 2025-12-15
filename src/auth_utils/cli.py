@@ -32,9 +32,23 @@ def google_login(scopes: list[str], no_browser: bool = False) -> int:
         print("Run 'auth-utils google setup' for instructions")
         return 1
 
-    if auth.is_authorized():
-        print("\nAlready authorized with required scopes")
+    # Check if already authorized AND token is valid
+    info = auth.get_token_info()
+    if auth.is_authorized() and info["status"] == "valid":
+        print("\nAlready authorized with valid token")
         return google_status(scopes)
+
+    if info["status"] == "expired":
+        print("\nToken expired, attempting refresh...")
+        try:
+            auth.get_credentials()  # Triggers refresh
+            new_info = auth.get_token_info()
+            if new_info["status"] == "valid":
+                print("Token refreshed successfully!")
+                return google_status(scopes)
+        except Exception as e:
+            print(f"Refresh failed: {e}")
+            print("Starting new authorization flow...")
 
     print(f"\nScopes: {', '.join(scopes)}")
     print("\nA browser window will open for Google consent.")
