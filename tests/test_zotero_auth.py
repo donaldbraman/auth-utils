@@ -108,10 +108,16 @@ class TestZoteroClientHeaders:
 
     def test_headers_without_api_key(self):
         """Should not include authorization when no API key."""
-        client = ZoteroClient(library_id="12345", api_key=None)
-        headers = client._get_headers()
-        assert "Authorization" not in headers
-        assert headers["Zotero-API-Version"] == "3"
+        # Temporarily remove env var to test no-key case
+        original = os.environ.pop("ZOTERO_API_KEY", None)
+        try:
+            client = ZoteroClient(library_id="12345", api_key=None)
+            headers = client._get_headers()
+            assert "Authorization" not in headers
+            assert headers["Zotero-API-Version"] == "3"
+        finally:
+            if original:
+                os.environ["ZOTERO_API_KEY"] = original
 
 
 # Integration tests - skip if no credentials
