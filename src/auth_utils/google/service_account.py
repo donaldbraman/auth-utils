@@ -6,11 +6,10 @@ The service account acts as its own identity and can access:
 - Google Workspace resources (if domain-wide delegation is configured)
 - Public Google APIs
 
+Key file is stored centrally in auth-utils/google/service_account_key.json by default.
+
 Example:
-    >>> auth = GoogleServiceAccount(
-    ...     key_path="service_account_key.json",
-    ...     scopes=["docs", "drive"]
-    ... )
+    >>> auth = GoogleServiceAccount(scopes=["docs", "drive"])
     >>> docs_service = auth.build_service("docs", "v1")
 """
 
@@ -21,6 +20,7 @@ from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+from auth_utils.config import GOOGLE_SERVICE_ACCOUNT
 from auth_utils.google.exceptions import CredentialsNotFoundError, GoogleAuthError
 from auth_utils.google.oauth import SCOPES
 
@@ -39,13 +39,14 @@ class GoogleServiceAccount:
 
     def __init__(
         self,
-        key_path: str | Path = "service_account_key.json",
+        key_path: str | Path | None = None,
         scopes: list[str] | None = None,
     ):
         """Initialize service account authentication.
 
         Args:
             key_path: Path to service account JSON key file.
+                     Defaults to auth-utils/google/service_account_key.json.
             scopes: List of scope names (e.g., ["docs", "drive"]) or full URLs.
                    If None, defaults to ["docs", "drive"].
 
@@ -53,7 +54,7 @@ class GoogleServiceAccount:
             CredentialsNotFoundError: If key file not found.
             GoogleAuthError: If key file is invalid.
         """
-        self.key_path = Path(key_path)
+        self.key_path = Path(key_path) if key_path else GOOGLE_SERVICE_ACCOUNT
 
         if not self.key_path.exists():
             raise CredentialsNotFoundError(str(self.key_path))

@@ -1,20 +1,134 @@
-"""CLI for auth-utils - Google OAuth management.
+"""CLI for auth-utils - credential management.
 
 Usage:
-    auth-utils google login [--scopes SCOPES] [--no-browser]
-    auth-utils google status
-    auth-utils google refresh
-    auth-utils google revoke
-    auth-utils google setup
+    auth-utils init              # Create directories, show setup instructions
+    auth-utils status            # Show all credential status
+    auth-utils google login      # Interactive OAuth login
+    auth-utils google status     # Show OAuth token status
+    auth-utils google refresh    # Refresh OAuth token
+    auth-utils google revoke     # Revoke OAuth token
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import webbrowser
-from pathlib import Path
+
+
+def cmd_init() -> int:
+    """Initialize auth-utils credential directory structure."""
+    from auth_utils.config import (
+        ENV_FILE,
+        GOOGLE_CREDENTIALS,
+        GOOGLE_DIR,
+        GOOGLE_SERVICE_ACCOUNT,
+        GOOGLE_TOKEN,
+        REPO_ROOT,
+        ensure_google_dir,
+    )
+
+    print("=" * 60)
+    print("AUTH-UTILS SETUP")
+    print("=" * 60)
+    print()
+    print(f"Repository: {REPO_ROOT}")
+    print()
+
+    # Create directories
+    ensure_google_dir()
+    print(f"Created: {GOOGLE_DIR}/")
+    print()
+
+    # Show what goes where
+    print("Credential locations:")
+    print()
+    print(f"  {ENV_FILE}")
+    print("    API keys: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY")
+    print("    Zotero:   ZOTERO_API_KEY, ZOTERO_LIBRARY_ID, ZOTERO_LIBRARY_TYPE")
+    print()
+    print(f"  {GOOGLE_CREDENTIALS}")
+    print("    OAuth client credentials from Google Cloud Console")
+    print()
+    print(f"  {GOOGLE_TOKEN}")
+    print("    OAuth tokens (created by 'auth-utils google login')")
+    print()
+    print(f"  {GOOGLE_SERVICE_ACCOUNT}")
+    print("    Service account key from Google Cloud Console")
+    print()
+    print("-" * 60)
+    print()
+
+    # Check what's already configured
+    status = _check_status()
+
+    if status["env_file"]:
+        print(".env exists")
+    else:
+        print("Create .env with your API keys:")
+        print()
+        print(f"  cat > {ENV_FILE} << 'EOF'")
+        print("  ANTHROPIC_API_KEY=sk-ant-...")
+        print("  OPENAI_API_KEY=sk-...")
+        print("  GOOGLE_API_KEY=...")
+        print("  ZOTERO_API_KEY=...")
+        print("  ZOTERO_LIBRARY_ID=12345")
+        print("  ZOTERO_LIBRARY_TYPE=user")
+        print("  EOF")
+        print()
+
+    if status["google"]["credentials"]:
+        print("Google credentials.json exists")
+    else:
+        print("For Google OAuth, download credentials from:")
+        print("  https://console.cloud.google.com/apis/credentials")
+        print(f"  Save as: {GOOGLE_CREDENTIALS}")
+        print()
+
+    return 0
+
+
+def cmd_status() -> int:
+    """Show status of all configured credentials."""
+    from auth_utils.config import REPO_ROOT
+
+    status = _check_status()
+
+    print("=" * 60)
+    print("AUTH-UTILS CREDENTIAL STATUS")
+    print("=" * 60)
+    print()
+    print(f"Repository: {REPO_ROOT}")
+    print()
+
+    # LLM Providers
+    print("LLM Providers:")
+    for provider, configured in status["llm"].items():
+        mark = "[x]" if configured else "[ ]"
+        print(f"  {mark} {provider}")
+    print()
+
+    # Google
+    print("Google:")
+    print(f"  credentials.json:       {'[x]' if status['google']['credentials'] else '[ ]'}")
+    print(f"  token.json:             {'[x]' if status['google']['token'] else '[ ]'}")
+    print(f"  service_account_key:    {'[x]' if status['google']['service_account'] else '[ ]'}")
+    print()
+
+    # Zotero
+    print("Zotero:")
+    print(f"  API key:    {'[x]' if status['zotero']['api_key'] else '[ ]'}")
+    print(f"  Library ID: {'[x]' if status['zotero']['library_id'] else '[ ]'}")
+    print()
+
+    return 0
+
+
+def _check_status() -> dict:
+    """Get credential status."""
+    from auth_utils.config import get_credential_status
+
+    return get_credential_status()
 
 
 def google_login(scopes: list[str], no_browser: bool = False) -> int:
@@ -27,9 +141,9 @@ def google_login(scopes: list[str], no_browser: bool = False) -> int:
 
     try:
         auth = GoogleOAuth(scopes=scopes)
-    except CredentialsNotFoundError:
-        print("\nError: credentials.json not found")
-        print("Run 'auth-utils google setup' for instructions")
+    except CredentialsNotFoundError as e:
+        print(f"\nError: {e}")
+        print("Run 'auth-utils init' for setup instructions")
         return 1
 
     # Check if already authorized AND token is valid
@@ -80,8 +194,9 @@ def google_status(scopes: list[str]) -> int:
 
     try:
         auth = GoogleOAuth(scopes=scopes)
-    except CredentialsNotFoundError:
-        print("credentials.json not found - run 'auth-utils google setup'")
+    except CredentialsNotFoundError as e:
+        print(f"Error: {e}")
+        print("Run 'auth-utils init' for setup instructions")
         return 1
 
     info = auth.get_token_info()
@@ -107,8 +222,9 @@ def google_refresh(scopes: list[str]) -> int:
 
     try:
         auth = GoogleOAuth(scopes=scopes)
-    except CredentialsNotFoundError:
-        print("credentials.json not found - run 'auth-utils google setup'")
+    except CredentialsNotFoundError as e:
+        print(f"Error: {e}")
+        print("Run 'auth-utils init' for setup instructions")
         return 1
 
     if not auth.is_authorized():
@@ -140,50 +256,6 @@ def google_revoke(scopes: list[str]) -> int:
     return 0
 
 
-def google_setup() -> int:
-    """Interactive OAuth setup helper."""
-    print("=" * 60)
-    print("GOOGLE OAUTH SETUP")
-    print("=" * 60)
-    print()
-    print("To use Google APIs, you need OAuth 2.0 credentials.")
-    print()
-    print("Steps:")
-    print()
-    print("1. Go to: https://console.cloud.google.com/apis/credentials")
-    print()
-    print("2. Create a new OAuth 2.0 Client ID (or use existing)")
-    print("   - Application type: Desktop app")
-    print("   - Name: auth-utils (or any name)")
-    print()
-    print("3. Download the credentials JSON")
-    print()
-    print("4. Save it as 'credentials.json' in your project root")
-    print()
-    print("-" * 60)
-
-    creds_path = Path("credentials.json")
-    if creds_path.exists():
-        print()
-        print("credentials.json already exists!")
-        with open(creds_path) as f:
-            creds = json.load(f)
-            if "installed" in creds:
-                client_id = creds["installed"].get("client_id", "")
-                if client_id:
-                    print(f"Client ID: {client_id[:30]}...")
-                    print()
-                    print("You can now run: auth-utils google login")
-                    return 0
-
-    print()
-    print("credentials.json not found!")
-    print()
-    print("Please download from Google Cloud Console:")
-    print("https://console.cloud.google.com/apis/credentials")
-    return 1
-
-
 def parse_scopes(scope_str: str | None) -> list[str]:
     """Parse comma-separated scopes."""
     if not scope_str:
@@ -195,13 +267,19 @@ def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="auth-utils",
-        description="Authentication utilities for Google OAuth and more",
+        description="Centralized credential management for LLM and Google APIs",
     )
-    subparsers = parser.add_subparsers(dest="service", help="Service to configure")
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # init command
+    subparsers.add_parser("init", help="Initialize credential directories")
+
+    # status command
+    subparsers.add_parser("status", help="Show all credential status")
 
     # Google subcommand
     google_parser = subparsers.add_parser("google", help="Google OAuth management")
-    google_subparsers = google_parser.add_subparsers(dest="command", help="Command")
+    google_subparsers = google_parser.add_subparsers(dest="google_command", help="Command")
 
     # google login
     login_parser = google_subparsers.add_parser("login", help="Interactive OAuth login")
@@ -244,28 +322,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated scopes (default: docs,drive)",
     )
 
-    # google setup
-    google_subparsers.add_parser("setup", help="Setup credentials")
-
     args = parser.parse_args(argv or sys.argv[1:])
 
-    if args.service is None:
+    if args.command is None:
         parser.print_help()
         return 0
 
-    if args.service == "google":
+    if args.command == "init":
+        return cmd_init()
+
+    if args.command == "status":
+        return cmd_status()
+
+    if args.command == "google":
         scopes = parse_scopes(getattr(args, "scopes", None))
 
-        if args.command == "login":
+        if args.google_command == "login":
             return google_login(scopes, args.no_browser)
-        elif args.command == "status":
+        elif args.google_command == "status":
             return google_status(scopes)
-        elif args.command == "refresh":
+        elif args.google_command == "refresh":
             return google_refresh(scopes)
-        elif args.command == "revoke":
+        elif args.google_command == "revoke":
             return google_revoke(scopes)
-        elif args.command == "setup":
-            return google_setup()
         else:
             google_parser.print_help()
             return 0
