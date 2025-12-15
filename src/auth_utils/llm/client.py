@@ -177,3 +177,30 @@ class LLMClient:
     def get_available_providers(cls) -> list[Provider]:
         """Return list of available provider names."""
         return list(PROVIDERS.keys())
+
+    @classmethod
+    def get_configured_providers(cls) -> dict[Provider, bool]:
+        """
+        Check which providers have API keys configured.
+
+        Returns:
+            Dictionary mapping provider names to configuration status.
+            True if the API key environment variable is set, False otherwise.
+
+        Example:
+            >>> status = LLMClient.get_configured_providers()
+            >>> print(status)
+            {'claude': True, 'gemini': False, 'chatgpt': True}
+        """
+        import os
+
+        env_vars = {
+            "claude": "ANTHROPIC_API_KEY",
+            "gemini": "GOOGLE_API_KEY",
+            "chatgpt": "OPENAI_API_KEY",
+        }
+
+        return {
+            provider: bool(os.environ.get(env_var))
+            for provider, env_var in env_vars.items()
+        }
