@@ -71,6 +71,21 @@ class GoogleProvider(BaseLLMProvider):
                 if response.candidates and response.candidates[0].content.parts:
                     content = response.candidates[0].content.parts[0].text
 
+            # Check for truncation due to max tokens
+            # Log warning if response was truncated (helps debug JSON parse failures)
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason
+                # finish_reason values: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER
+                if finish_reason and str(finish_reason).upper() in ("MAX_TOKENS", "2"):
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Gemini response truncated (finish_reason={finish_reason}). "
+                        f"Response length: {len(content)} chars. "
+                        f"Consider increasing max_tokens parameter."
+                    )
+
             return LLMResponse(
                 content=content,
                 model=self.model,
