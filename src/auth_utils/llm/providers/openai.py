@@ -27,7 +27,7 @@ class OpenAIProvider(BaseLLMProvider):
     """ChatGPT provider using OpenAI API."""
 
     provider_name = "chatgpt"
-    default_model = "gpt-4o"
+    default_model = "gpt-5.2"
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
         super().__init__(model, api_key)
@@ -53,7 +53,7 @@ class OpenAIProvider(BaseLLMProvider):
             response = await self._client.chat.completions.create(
                 model=self.model,
                 messages=formatted_messages,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
                 temperature=temperature,
                 **kwargs,
             )

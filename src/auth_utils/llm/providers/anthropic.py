@@ -27,7 +27,7 @@ class AnthropicProvider(BaseLLMProvider):
     """Claude provider using Anthropic API."""
 
     provider_name = "claude"
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "claude-opus-4-5-20251101"
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
         super().__init__(model, api_key)

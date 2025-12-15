@@ -84,9 +84,9 @@ except APIError as e:
 
 | Provider | Environment Variable | Default Model |
 |----------|---------------------|---------------|
-| `claude` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
-| `gemini` | `GOOGLE_API_KEY` | `gemini-1.5-pro` |
-| `chatgpt` | `OPENAI_API_KEY` | `gpt-4o` |
+| `claude` | `ANTHROPIC_API_KEY` | `claude-opus-4-5-20251101` |
+| `gemini` | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
+| `chatgpt` | `OPENAI_API_KEY` | `gpt-5.2` |
 
 ## Development
 

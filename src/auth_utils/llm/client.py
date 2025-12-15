@@ -21,9 +21,9 @@ PROVIDERS: dict[Provider, type[BaseLLMProvider]] = {
 
 # Default models for each provider
 DEFAULT_MODELS: dict[Provider, str] = {
-    "claude": "claude-sonnet-4-20250514",
-    "gemini": "gemini-1.5-pro",
-    "chatgpt": "gpt-4o",
+    "claude": "claude-opus-4-5-20251101",
+    "gemini": "gemini-2.5-flash",
+    "chatgpt": "gpt-5.2",
 }
 
 

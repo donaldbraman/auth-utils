@@ -16,7 +16,7 @@ class GoogleProvider(BaseLLMProvider):
     """Gemini provider using Google Generative AI API."""
 
     provider_name = "gemini"
-    default_model = "gemini-1.5-pro"
+    default_model = "gemini-2.5-flash"
 
     def __init__(self, model: str | None = None, api_key: str | None = None):
         super().__init__(model, api_key)
@@ -62,8 +62,18 @@ class GoogleProvider(BaseLLMProvider):
                     output_tokens=response.usage_metadata.candidates_token_count or 0,
                 )
 
+            # Safely extract content - response.text can raise ValueError
+            # if no parts are returned (e.g., MAX_TOKENS with no content)
+            content = ""
+            try:
+                content = response.text
+            except ValueError:
+                # Try to extract from candidates directly
+                if response.candidates and response.candidates[0].content.parts:
+                    content = response.candidates[0].content.parts[0].text
+
             return LLMResponse(
-                content=response.text,
+                content=content,
                 model=self.model,
                 provider=self.provider_name,
                 usage=usage,
