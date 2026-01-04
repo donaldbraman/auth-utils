@@ -4,6 +4,7 @@ Unified LLM client for multi-provider support.
 
 import asyncio
 from collections.abc import Sequence
+from typing import Self
 
 from auth_utils.llm.exceptions import LLMError
 from auth_utils.llm.models import LLMResponse, Message, Provider
@@ -156,14 +157,14 @@ class LLMClient:
         ) -> tuple[Provider, LLMResponse | LLMError]:
             """Chat with error capture instead of raising."""
             try:
-                client = cls(provider=provider, model=model)
-                response = await client.chat(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    **kwargs,
-                )
-                return provider, response
+                async with cls(provider=provider, model=model) as client:
+                    response = await client.chat(
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        **kwargs,
+                    )
+                    return provider, response
             except LLMError as e:
                 return provider, e
 
@@ -201,3 +202,15 @@ class LLMClient:
         }
 
         return {provider: bool(os.environ.get(env_var)) for provider, env_var in env_vars.items()}
+
+    async def close(self) -> None:
+        """Close the client and release resources."""
+        await self._provider.close()
+
+    async def __aenter__(self) -> Self:
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager and close resources."""
+        await self.close()

@@ -101,3 +101,7 @@ class OpenAIProvider(BaseLLMProvider):
                 original=e,
                 status_code=e.status_code,
             ) from e
+
+    async def close(self) -> None:
+        """Close the OpenAI client."""
+        await self._client.close()

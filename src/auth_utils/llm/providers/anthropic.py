@@ -112,3 +112,7 @@ class AnthropicProvider(BaseLLMProvider):
                 original=e,
                 status_code=e.status_code,
             ) from e
+
+    async def close(self) -> None:
+        """Close the Anthropic client."""
+        await self._client.close()

@@ -4,8 +4,9 @@ Google Gemini provider implementation.
 
 import os
 
-import google.generativeai as genai
+from google import genai
 from google.api_core import exceptions as google_exceptions
+from google.genai import types
 
 from auth_utils.llm.exceptions import APIError, AuthenticationError, RateLimitError
 from auth_utils.llm.models import LLMResponse, Message, UsageStats
@@ -13,7 +14,7 @@ from auth_utils.llm.providers.base import BaseLLMProvider
 
 
 class GoogleProvider(BaseLLMProvider):
-    """Gemini provider using Google Generative AI API."""
+    """Gemini provider using Google GenAI API."""
 
     provider_name = "gemini"
 
@@ -25,32 +26,32 @@ class GoogleProvider(BaseLLMProvider):
                 "GOOGLE_API_KEY not found in environment variables",
                 provider=self.provider_name,
             )
-        genai.configure(api_key=self._api_key)
-        self._model = genai.GenerativeModel(self.model)
+        self._client = genai.Client(api_key=self._api_key)
 
     async def chat(
         self,
         messages: list[Message],
         max_tokens: int = 4096,
         temperature: float = 0.7,
-        **kwargs,
+        **_kwargs,
     ) -> LLMResponse:
         """Send a chat completion request to Gemini."""
         try:
             # Convert messages to Gemini format
-            gemini_messages = self._convert_to_gemini_format(messages)
+            gemini_contents, system_instruction = self._convert_to_gemini_format(messages)
 
             # Configure generation
-            generation_config = genai.GenerationConfig(
+            config = types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
                 temperature=temperature,
+                system_instruction=system_instruction,
             )
 
-            # Gemini's generate_content_async for async support
-            response = await self._model.generate_content_async(
-                gemini_messages,
-                generation_config=generation_config,
-                **kwargs,
+            # Use async client for generate_content
+            response = await self._client.aio.models.generate_content(
+                model=self.model,
+                contents=gemini_contents,
+                config=config,
             )
 
             # Extract usage stats if available
@@ -123,8 +124,14 @@ class GoogleProvider(BaseLLMProvider):
                 original=e,
             ) from e
 
-    def _convert_to_gemini_format(self, messages: list[Message]) -> list[dict]:
-        """Convert messages to Gemini's content format."""
+    def _convert_to_gemini_format(
+        self, messages: list[Message]
+    ) -> tuple[list[types.Content], str | None]:
+        """Convert messages to Gemini's content format.
+
+        Returns:
+            Tuple of (contents list, system_instruction string or None)
+        """
         gemini_contents = []
         system_instruction = None
 
@@ -133,26 +140,16 @@ class GoogleProvider(BaseLLMProvider):
                 # Gemini handles system as a separate instruction
                 system_instruction = msg.content
             elif msg.role == "user":
-                gemini_contents.append({"role": "user", "parts": [msg.content]})
+                gemini_contents.append(
+                    types.Content(role="user", parts=[types.Part.from_text(text=msg.content)])
+                )
             elif msg.role == "assistant":
-                gemini_contents.append({"role": "model", "parts": [msg.content]})
-
-        # If there's a system instruction, prepend it to the first user message
-        # or create a context message
-        if system_instruction and gemini_contents:
-            if gemini_contents[0]["role"] == "user":
-                # Prepend system instruction to first user message
-                gemini_contents[0]["parts"].insert(
-                    0, f"System instruction: {system_instruction}\n\n"
-                )
-            else:
-                # Insert as first user message
-                gemini_contents.insert(
-                    0,
-                    {
-                        "role": "user",
-                        "parts": [f"System instruction: {system_instruction}"],
-                    },
+                gemini_contents.append(
+                    types.Content(role="model", parts=[types.Part.from_text(text=msg.content)])
                 )
 
-        return gemini_contents
+        return gemini_contents, system_instruction
+
+    async def close(self) -> None:
+        """Close the Google GenAI client."""
+        self._client.close()

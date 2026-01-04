@@ -13,7 +13,7 @@ keywords = ["llm", "authentication", "anthropic", "openai", "google", "gemini", 
 dependencies = [
     # LLM providers
     "anthropic>=0.40.0",
-    "google-generativeai>=0.8.0",
+    "google-genai>=1.0.0",
     "openai>=1.50.0",
     # HTTP client
     "httpx>=0.27.0",

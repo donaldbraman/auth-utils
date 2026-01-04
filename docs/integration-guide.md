@@ -231,24 +231,32 @@ except ZoteroAPIError as e:
 
 ## Direct Gemini Model Access
 
-For use cases requiring direct `genai.GenerativeModel` (binary content, PDF extraction):
+For use cases requiring direct genai client access (binary content, PDF extraction):
 
 ```python
-# Option 1: Use GoogleProvider to configure, then use genai directly
+# Option 1: Use GoogleProvider's client directly
 from auth_utils.llm.providers.google import GoogleProvider
+from google.genai import types
 
-# This configures genai.configure() internally
 provider = GoogleProvider(model="gemini-2.5-flash-lite")
 
-# Now genai is configured - use directly
-import google.generativeai as genai
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
-response = model.generate_content([prompt, {"mime_type": "application/pdf", "data": pdf_bytes}])
+# Access the configured client
+response = provider._client.models.generate_content(
+    model="gemini-2.5-flash-lite",
+    contents=[prompt, types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
+)
 ```
 
 ```python
-# Option 2: Create a bridge module (like cite-assist does)
-# See cite-assist/core/auth_bridge.py for example
+# Option 2: Create your own client
+from google import genai
+from google.genai import types
+
+client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+response = client.models.generate_content(
+    model="gemini-2.5-flash-lite",
+    contents=[prompt, types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
+)
 ```
 
 ---

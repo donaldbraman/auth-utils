@@ -84,45 +84,45 @@ class TestClaudeIntegration:
     @skip_no_anthropic
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
-        response = await client.chat(
-            messages=[Message(role="user", content="Say 'hello' and nothing else.")],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="claude", model=TEST_MODELS["claude"]) as client:
+            response = await client.chat(
+                messages=[Message(role="user", content="Say 'hello' and nothing else.")],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert response.provider == "claude"
-        assert "claude" in response.model.lower()
-        assert len(response.content) > 0
-        assert "hello" in response.content.lower()
-        assert response.usage.total_tokens > 0
+            assert isinstance(response, LLMResponse)
+            assert response.provider == "claude"
+            assert "claude" in response.model.lower()
+            assert len(response.content) > 0
+            assert "hello" in response.content.lower()
+            assert response.usage.total_tokens > 0
 
     @skip_no_anthropic
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
-        response = await client.chat(
-            messages=[
-                Message(role="system", content="You are a pirate. Always say 'Arrr'."),
-                Message(role="user", content="Hello!"),
-            ],
-            max_tokens=100,
-        )
+        async with LLMClient(provider="claude", model=TEST_MODELS["claude"]) as client:
+            response = await client.chat(
+                messages=[
+                    Message(role="system", content="You are a pirate. Always say 'Arrr'."),
+                    Message(role="user", content="Hello!"),
+                ],
+                max_tokens=100,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert len(response.content) > 0
+            assert isinstance(response, LLMResponse)
+            assert len(response.content) > 0
 
     @skip_no_anthropic
     async def test_dict_messages(self):
         """Should accept dict format messages."""
-        client = LLMClient(provider="claude", model=TEST_MODELS["claude"])
-        response = await client.chat(
-            messages=[{"role": "user", "content": "Say 'test' and nothing else."}],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="claude", model=TEST_MODELS["claude"]) as client:
+            response = await client.chat(
+                messages=[{"role": "user", "content": "Say 'test' and nothing else."}],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert "test" in response.content.lower()
+            assert isinstance(response, LLMResponse)
+            assert "test" in response.content.lower()
 
 
 @pytest.mark.asyncio
@@ -132,31 +132,31 @@ class TestGeminiIntegration:
     @skip_no_google
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="gemini", model=TEST_MODELS["gemini"])
-        response = await client.chat(
-            messages=[Message(role="user", content="Say 'hello' and nothing else.")],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="gemini", model=TEST_MODELS["gemini"]) as client:
+            response = await client.chat(
+                messages=[Message(role="user", content="Say 'hello' and nothing else.")],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert response.provider == "gemini"
-        assert len(response.content) > 0
-        assert "hello" in response.content.lower()
+            assert isinstance(response, LLMResponse)
+            assert response.provider == "gemini"
+            assert len(response.content) > 0
+            assert "hello" in response.content.lower()
 
     @skip_no_google
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="gemini", model=TEST_MODELS["gemini"])
-        response = await client.chat(
-            messages=[
-                Message(role="system", content="Always respond in exactly 3 words."),
-                Message(role="user", content="What is Python?"),
-            ],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="gemini", model=TEST_MODELS["gemini"]) as client:
+            response = await client.chat(
+                messages=[
+                    Message(role="system", content="Always respond in exactly 3 words."),
+                    Message(role="user", content="What is Python?"),
+                ],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert len(response.content) > 0
+            assert isinstance(response, LLMResponse)
+            assert len(response.content) > 0
 
 
 @pytest.mark.asyncio
@@ -166,33 +166,33 @@ class TestChatGPTIntegration:
     @skip_no_openai
     async def test_simple_chat(self):
         """Should complete a simple chat request."""
-        client = LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"])
-        response = await client.chat(
-            messages=[Message(role="user", content="Say 'hello' and nothing else.")],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"]) as client:
+            response = await client.chat(
+                messages=[Message(role="user", content="Say 'hello' and nothing else.")],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert response.provider == "chatgpt"
-        assert "gpt" in response.model.lower()
-        assert len(response.content) > 0
-        assert "hello" in response.content.lower()
-        assert response.usage.total_tokens > 0
+            assert isinstance(response, LLMResponse)
+            assert response.provider == "chatgpt"
+            assert "gpt" in response.model.lower()
+            assert len(response.content) > 0
+            assert "hello" in response.content.lower()
+            assert response.usage.total_tokens > 0
 
     @skip_no_openai
     async def test_with_system_message(self):
         """Should handle system messages correctly."""
-        client = LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"])
-        response = await client.chat(
-            messages=[
-                Message(role="system", content="You respond only with 'OK'."),
-                Message(role="user", content="Hello!"),
-            ],
-            max_tokens=50,
-        )
+        async with LLMClient(provider="chatgpt", model=TEST_MODELS["chatgpt"]) as client:
+            response = await client.chat(
+                messages=[
+                    Message(role="system", content="You respond only with 'OK'."),
+                    Message(role="user", content="Hello!"),
+                ],
+                max_tokens=50,
+            )
 
-        assert isinstance(response, LLMResponse)
-        assert len(response.content) > 0
+            assert isinstance(response, LLMResponse)
+            assert len(response.content) > 0
 
 
 @pytest.mark.asyncio
@@ -259,9 +259,11 @@ class TestErrorHandling:
     @skip_no_anthropic
     async def test_invalid_api_key_raises_auth_error(self):
         """Should raise AuthenticationError for invalid API key."""
-        client = LLMClient(provider="claude", model=TEST_MODELS["claude"], api_key="invalid-key")
-        with pytest.raises((AuthenticationError, APIError)):
-            await client.chat(
-                messages=[Message(role="user", content="Hello")],
-                max_tokens=10,
-            )
+        async with LLMClient(
+            provider="claude", model=TEST_MODELS["claude"], api_key="invalid-key"
+        ) as client:
+            with pytest.raises((AuthenticationError, APIError)):
+                await client.chat(
+                    messages=[Message(role="user", content="Hello")],
+                    max_tokens=10,
+                )
