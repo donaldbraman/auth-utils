@@ -5,6 +5,7 @@ import json
 import pytest
 
 from auth_utils.google import (
+    AuthorizationRequired,
     CredentialsNotFoundError,
     GoogleOAuth,
 )
@@ -181,3 +182,74 @@ class TestGoogleOAuthWithCredentials:
         )
         # Token should be rejected due to missing scopes
         assert auth.is_authorized() is False
+
+
+class TestAuthorizationRequired:
+    """Tests for AuthorizationRequired exception."""
+
+    def test_exception_contains_auth_url(self):
+        """Should store auth_url on exception."""
+        url = "https://accounts.google.com/o/oauth2/auth?client_id=test"
+        exc = AuthorizationRequired(url)
+        assert exc.auth_url == url
+        assert url in str(exc)
+
+    def test_exception_message_includes_url(self):
+        """Should include URL in exception message."""
+        url = "https://accounts.google.com/o/oauth2/auth?client_id=test"
+        exc = AuthorizationRequired(url)
+        assert "Authorization required" in str(exc)
+        assert url in str(exc)
+
+
+class TestAuthorizeMethod:
+    """Tests for GoogleOAuth.authorize() method."""
+
+    @pytest.fixture
+    def mock_credentials(self, tmp_path):
+        """Create a mock credentials file."""
+        creds = {
+            "installed": {
+                "client_id": "test-client-id.apps.googleusercontent.com",
+                "client_secret": "test-client-secret",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["http://localhost"],
+            }
+        }
+        creds_path = tmp_path / "credentials.json"
+        with open(creds_path, "w") as f:
+            json.dump(creds, f)
+        return creds_path
+
+    @pytest.fixture
+    def mock_token(self, tmp_path):
+        """Create a mock token file."""
+        token = {
+            "token": "test-access-token",
+            "refresh_token": "test-refresh-token",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "test-client-id.apps.googleusercontent.com",
+            "client_secret": "test-client-secret",
+            "scopes": [
+                "https://www.googleapis.com/auth/documents",
+                "https://www.googleapis.com/auth/drive",
+            ],
+            "type": "Bearer",
+            "expiry": "2099-01-01T00:00:00Z",
+        }
+        token_path = tmp_path / "token.json"
+        with open(token_path, "w") as f:
+            json.dump(token, f)
+        return token_path
+
+    def test_authorize_returns_early_when_already_authorized(self, mock_credentials, mock_token):
+        """Should return existing token if already authorized."""
+        auth = GoogleOAuth(
+            credentials_path=str(mock_credentials),
+            token_path=str(mock_token),
+        )
+        # Should return without opening browser
+        token = auth.authorize()
+        assert token is not None
+        assert "access_token" in token
