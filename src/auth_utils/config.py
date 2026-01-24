@@ -83,6 +83,9 @@ def get_credential_status() -> dict:
     Returns:
         Dictionary with credential status.
     """
+    # Get email/SMTP status
+    email_status = _get_email_status()
+
     return {
         "repo_root": str(REPO_ROOT),
         "env_file": ENV_FILE.exists(),
@@ -100,7 +103,45 @@ def get_credential_status() -> dict:
             "api_key": bool(os.environ.get("ZOTERO_API_KEY")),
             "library_id": bool(os.environ.get("ZOTERO_LIBRARY_ID")),
         },
+        "email": email_status,
     }
+
+
+def _get_email_status() -> dict:
+    """Get email/SMTP credential status.
+
+    Returns:
+        Dictionary with email provider status.
+    """
+    import sys
+
+    gmail_status = {
+        "keychain": False,
+        "keychain_user": None,
+        "env": False,
+        "env_user": None,
+    }
+
+    # Check environment variables
+    env_user = os.environ.get("GMAIL_SMTP_USER")
+    env_pass = os.environ.get("GMAIL_SMTP_PASSWORD")
+    if env_user and env_pass:
+        gmail_status["env"] = True
+        gmail_status["env_user"] = env_user
+
+    # Check Keychain (macOS only)
+    if sys.platform == "darwin":
+        try:
+            from auth_utils.email.providers.gmail import get_gmail_keychain_status
+
+            kc_status = get_gmail_keychain_status()
+            if kc_status.get("configured"):
+                gmail_status["keychain"] = True
+                gmail_status["keychain_user"] = kc_status.get("user")
+        except ImportError:
+            pass
+
+    return {"gmail": gmail_status}
 
 
 # Auto-load .env from repo root on import
