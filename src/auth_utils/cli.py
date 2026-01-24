@@ -18,6 +18,12 @@ Usage:
     auth-utils gmail auth                  # Authorize Gmail API access
     auth-utils gmail status                # Show Gmail API authorization status
     auth-utils gmail search <query>        # Search emails via Gmail API
+    auth-utils tasks auth                  # Authorize Google Tasks API
+    auth-utils tasks status                # Show Tasks authorization status
+    auth-utils tasks lists                 # List task lists
+    auth-utils tasks list                  # List tasks
+    auth-utils tasks add <title>           # Add a task
+    auth-utils tasks complete <id>         # Complete a task
 """
 
 from __future__ import annotations
@@ -885,6 +891,249 @@ def gmail_search(query: str, limit: int) -> int:
         return 1
 
 
+# =============================================================================
+# Google Tasks Commands
+# =============================================================================
+
+
+def tasks_auth() -> int:
+    """Authorize Google Tasks API access via OAuth."""
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+    from auth_utils.tasks import TasksClient
+
+    print("=" * 60)
+    print("GOOGLE TASKS API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = TasksClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            lists = client.list_task_lists()
+            print(f"Found {len(lists)} task list(s)")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        lists = client.list_task_lists()
+        print(f"Found {len(lists)} task list(s)")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes tasks'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def tasks_status() -> int:
+    """Show Google Tasks API authorization status."""
+    from auth_utils.tasks import TasksClient
+
+    print("=" * 60)
+    print("GOOGLE TASKS API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = TasksClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+            lists = client.list_task_lists()
+            print(f"    Task lists: {len(lists)}")
+            for tl in lists[:5]:
+                print(f"      - {tl.title}")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils tasks auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def tasks_lists() -> int:
+    """List all task lists."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.tasks import TasksClient
+
+    try:
+        client = TasksClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils tasks auth' first.")
+            return 1
+
+        lists = client.list_task_lists()
+
+        if not lists:
+            print("No task lists found.")
+            return 0
+
+        print(f"Found {len(lists)} task list(s):\n")
+        for tl in lists:
+            print(f"  {tl.id}")
+            print(f"    Title: {tl.title}")
+            if tl.updated:
+                print(f"    Updated: {tl.updated.strftime('%Y-%m-%d %H:%M')}")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils tasks auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def tasks_list(tasklist_id: str, show_completed: bool) -> int:
+    """List tasks in a task list."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.tasks import TasksClient
+
+    try:
+        client = TasksClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils tasks auth' first.")
+            return 1
+
+        tasks = client.list_tasks(tasklist_id=tasklist_id, show_completed=show_completed)
+
+        if not tasks:
+            print("No tasks found.")
+            return 0
+
+        print(f"Found {len(tasks)} task(s):\n")
+        for task in tasks:
+            status = "[x]" if task.is_completed else "[ ]"
+            due_str = f" (due: {task.due})" if task.due else ""
+            print(f"  {status} {task.title}{due_str}")
+            print(f"      ID: {task.id}")
+            if task.notes:
+                print(f"      Notes: {task.notes[:50]}...")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils tasks auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def tasks_add(title: str, tasklist_id: str, notes: str | None, due: str | None) -> int:
+    """Add a new task."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.tasks import TasksClient
+
+    try:
+        client = TasksClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils tasks auth' first.")
+            return 1
+
+        task = client.create_task(
+            title=title,
+            tasklist_id=tasklist_id,
+            notes=notes,
+            due=due,
+        )
+
+        print(f"Task created: {task.title}")
+        print(f"  ID: {task.id}")
+        if task.due:
+            print(f"  Due: {task.due}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils tasks auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def tasks_complete(task_id: str, tasklist_id: str) -> int:
+    """Complete a task."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.tasks import TasksClient
+
+    try:
+        client = TasksClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils tasks auth' first.")
+            return 1
+
+        task = client.complete_task(task_id=task_id, tasklist_id=tasklist_id)
+        print(f"Task completed: {task.title}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils tasks auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def tasks_delete(task_id: str, tasklist_id: str) -> int:
+    """Delete a task."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.tasks import TasksClient
+
+    try:
+        client = TasksClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils tasks auth' first.")
+            return 1
+
+        if client.delete_task(task_id=task_id, tasklist_id=tasklist_id):
+            print("Task deleted.")
+        else:
+            print("Failed to delete task.")
+            return 1
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils tasks auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1060,6 +1309,74 @@ def main(argv: list[str] | None = None) -> int:
         help="Max messages to return (default: 10)",
     )
 
+    # Tasks API subcommand
+    tasks_parser = subparsers.add_parser("tasks", help="Google Tasks management")
+    tasks_subparsers = tasks_parser.add_subparsers(dest="tasks_command", help="Command")
+
+    # tasks auth
+    tasks_subparsers.add_parser("auth", help="Authorize Google Tasks API")
+
+    # tasks status
+    tasks_subparsers.add_parser("status", help="Show Tasks authorization status")
+
+    # tasks lists
+    tasks_subparsers.add_parser("lists", help="List all task lists")
+
+    # tasks list
+    tasks_list_parser = tasks_subparsers.add_parser("list", help="List tasks")
+    tasks_list_parser.add_argument(
+        "--tasklist",
+        type=str,
+        default="@default",
+        help="Task list ID (default: @default)",
+    )
+    tasks_list_parser.add_argument(
+        "--show-completed",
+        action="store_true",
+        default=True,
+        help="Include completed tasks (default: True)",
+    )
+
+    # tasks add
+    tasks_add_parser = tasks_subparsers.add_parser("add", help="Add a task")
+    tasks_add_parser.add_argument("title", help="Task title")
+    tasks_add_parser.add_argument(
+        "--tasklist",
+        type=str,
+        default="@default",
+        help="Task list ID (default: @default)",
+    )
+    tasks_add_parser.add_argument(
+        "--notes",
+        type=str,
+        help="Task notes/description",
+    )
+    tasks_add_parser.add_argument(
+        "--due",
+        type=str,
+        help="Due date (YYYY-MM-DD)",
+    )
+
+    # tasks complete
+    tasks_complete_parser = tasks_subparsers.add_parser("complete", help="Complete a task")
+    tasks_complete_parser.add_argument("task_id", help="Task ID to complete")
+    tasks_complete_parser.add_argument(
+        "--tasklist",
+        type=str,
+        default="@default",
+        help="Task list ID (default: @default)",
+    )
+
+    # tasks delete
+    tasks_delete_parser = tasks_subparsers.add_parser("delete", help="Delete a task")
+    tasks_delete_parser.add_argument("task_id", help="Task ID to delete")
+    tasks_delete_parser.add_argument(
+        "--tasklist",
+        type=str,
+        default="@default",
+        help="Task list ID (default: @default)",
+    )
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -1125,6 +1442,25 @@ def main(argv: list[str] | None = None) -> int:
             return gmail_search(args.query, args.limit)
         else:
             gmail_parser.print_help()
+            return 0
+
+    if args.command == "tasks":
+        if args.tasks_command == "auth":
+            return tasks_auth()
+        elif args.tasks_command == "status":
+            return tasks_status()
+        elif args.tasks_command == "lists":
+            return tasks_lists()
+        elif args.tasks_command == "list":
+            return tasks_list(args.tasklist, args.show_completed)
+        elif args.tasks_command == "add":
+            return tasks_add(args.title, args.tasklist, args.notes, args.due)
+        elif args.tasks_command == "complete":
+            return tasks_complete(args.task_id, args.tasklist)
+        elif args.tasks_command == "delete":
+            return tasks_delete(args.task_id, args.tasklist)
+        else:
+            tasks_parser.print_help()
             return 0
 
     return 0
