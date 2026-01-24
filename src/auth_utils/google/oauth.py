@@ -50,6 +50,8 @@ SCOPES = {
     "gmail_readonly": "https://www.googleapis.com/auth/gmail.readonly",
     "calendar": "https://www.googleapis.com/auth/calendar",
     "calendar_readonly": "https://www.googleapis.com/auth/calendar.readonly",
+    "tasks": "https://www.googleapis.com/auth/tasks",
+    "tasks_readonly": "https://www.googleapis.com/auth/tasks.readonly",
 }
 
 
