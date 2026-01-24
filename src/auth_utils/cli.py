@@ -13,6 +13,8 @@ Usage:
     auth-utils email status                # Show email/SMTP credential status
     auth-utils email test <provider>       # Test SMTP connection
     auth-utils email store-password <provider>  # Store password in Keychain
+    auth-utils email imap-test             # Test IMAP connection
+    auth-utils email search                # Search emails via IMAP
 """
 
 from __future__ import annotations
@@ -647,6 +649,121 @@ def email_store_password(provider: str) -> int:
         return 1
 
 
+def email_imap_test(provider: str) -> int:
+    """Test IMAP connection."""
+    from auth_utils.email import IMAPClient, SMTPAuthError, SMTPConnectionError
+
+    print("=" * 60)
+    print(f"TESTING {provider.upper()} IMAP")
+    print("=" * 60)
+    print()
+
+    try:
+        with IMAPClient(provider=provider) as client:
+            user = client.user
+            print(f"User: {user}")
+            print(f"Server: {client._host}:{client._port}")
+            print()
+
+            print("Testing connection...", end=" ", flush=True)
+            client.test_connection()
+            print("[OK]")
+
+            print("Listing folders...", end=" ", flush=True)
+            folders = client.list_folders()
+            print(f"[OK] {len(folders)} folders")
+
+            print()
+            print("IMAP configuration is working!")
+            return 0
+
+    except SMTPAuthError as e:
+        print("[FAILED]")
+        print(f"\nAuthentication error: {e}")
+        print("\nTips:")
+        print("  - Ensure IMAP is enabled in Gmail settings")
+        print("  - Use the same app password as SMTP")
+        return 1
+
+    except SMTPConnectionError as e:
+        print("[FAILED]")
+        print(f"\nConnection error: {e}")
+        return 1
+
+    except Exception as e:
+        print("[FAILED]")
+        print(f"\nError: {e}")
+        return 1
+
+
+def email_search(
+    provider: str,
+    folder: str,
+    from_: str | None,
+    subject: str | None,
+    since: str | None,
+    limit: int,
+) -> int:
+    """Search emails via IMAP."""
+    from datetime import datetime
+
+    from auth_utils.email import IMAPClient, SMTPAuthError, SMTPConnectionError
+
+    print("=" * 60)
+    print("SEARCHING EMAILS VIA IMAP")
+    print("=" * 60)
+    print()
+
+    # Parse since date if provided
+    since_date = None
+    if since:
+        try:
+            since_date = datetime.strptime(since, "%Y-%m-%d").date()
+        except ValueError:
+            print(f"Error: Invalid date format '{since}'. Use YYYY-MM-DD.")
+            return 1
+
+    try:
+        with IMAPClient(provider=provider) as client:
+            print(f"User: {client.user}")
+            print(f"Folder: {folder}")
+            print()
+
+            messages = client.search(
+                folder=folder,
+                from_=from_,
+                subject=subject,
+                since=since_date,
+                limit=limit,
+            )
+
+            if not messages:
+                print("No messages found.")
+                return 0
+
+            print(f"Found {len(messages)} message(s):\n")
+            for msg in messages:
+                date_str = msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else "unknown"
+                print(f"  [{date_str}] {msg.sender}")
+                print(f"    Subject: {msg.subject}")
+                print(f"    Preview: {msg.snippet}")
+                print()
+
+            return 0
+
+    except SMTPAuthError as e:
+        print(f"Authentication error: {e}")
+        return 1
+
+    except SMTPConnectionError as e:
+        print(f"Connection error: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -751,6 +868,52 @@ def main(argv: list[str] | None = None) -> int:
         help="Provider name (default: gmail)",
     )
 
+    # email imap-test
+    email_imap_test_parser = email_subparsers.add_parser("imap-test", help="Test IMAP connection")
+    email_imap_test_parser.add_argument(
+        "provider",
+        nargs="?",
+        default="gmail",
+        help="Provider name (default: gmail)",
+    )
+
+    # email search
+    email_search_parser = email_subparsers.add_parser("search", help="Search emails via IMAP")
+    email_search_parser.add_argument(
+        "--provider",
+        type=str,
+        default="gmail",
+        help="Provider name (default: gmail)",
+    )
+    email_search_parser.add_argument(
+        "--folder",
+        type=str,
+        default="INBOX",
+        help="Mail folder (default: INBOX)",
+    )
+    email_search_parser.add_argument(
+        "--from",
+        dest="from_",
+        type=str,
+        help="Filter by sender",
+    )
+    email_search_parser.add_argument(
+        "--subject",
+        type=str,
+        help="Filter by subject",
+    )
+    email_search_parser.add_argument(
+        "--since",
+        type=str,
+        help="Messages since date (YYYY-MM-DD)",
+    )
+    email_search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max messages to return (default: 10)",
+    )
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -792,6 +955,17 @@ def main(argv: list[str] | None = None) -> int:
             return email_test(args.provider, args.to)
         elif args.email_command == "store-password":
             return email_store_password(args.provider)
+        elif args.email_command == "imap-test":
+            return email_imap_test(args.provider)
+        elif args.email_command == "search":
+            return email_search(
+                args.provider,
+                args.folder,
+                args.from_,
+                args.subject,
+                args.since,
+                args.limit,
+            )
         else:
             email_parser.print_help()
             return 0
