@@ -1,12 +1,11 @@
-"""Email/SMTP authentication support.
+"""Email authentication support (SMTP and IMAP).
 
-Send emails via Gmail SMTP with centralized credential management.
+Send and read emails via Gmail with centralized credential management.
 Supports macOS Keychain for secure password storage.
 
-Usage:
+Sending emails (SMTP):
     from auth_utils.email import SMTPClient
 
-    # Auto-detect credentials from Keychain or environment
     client = SMTPClient(provider="gmail")
     client.send(
         to=["recipient@example.com"],
@@ -14,18 +13,17 @@ Usage:
         body="Message body",
     )
 
-    # HTML email with explicit credentials
-    client = SMTPClient(
-        provider="gmail",
-        user="sender@gmail.com",
-        password="app-password",
-    )
-    client.send(
-        to=["recipient@example.com"],
-        subject="Hello",
-        body="<h1>HTML Message</h1>",
-        html=True,
-    )
+Reading emails (IMAP):
+    from auth_utils.email import IMAPClient
+
+    with IMAPClient(provider="gmail") as client:
+        messages = client.search(
+            subject="absent",
+            since=date(2026, 1, 20),
+        )
+        for msg in messages:
+            print(msg.subject, msg.sender)
+            print(msg.body)
 
 Credential lookup order:
     1. Explicit user/password arguments
@@ -41,10 +39,13 @@ from auth_utils.email.exceptions import (
     SMTPError,
     SMTPSendError,
 )
+from auth_utils.email.imap import EmailMessage, IMAPClient
 from auth_utils.email.smtp import SMTPClient
 
 __all__ = [
     "SMTPClient",
+    "IMAPClient",
+    "EmailMessage",
     "SMTPError",
     "SMTPAuthError",
     "SMTPConnectionError",
