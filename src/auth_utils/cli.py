@@ -15,6 +15,9 @@ Usage:
     auth-utils email store-password <provider>  # Store password in Keychain
     auth-utils email imap-test             # Test IMAP connection
     auth-utils email search                # Search emails via IMAP
+    auth-utils gmail auth                  # Authorize Gmail API access
+    auth-utils gmail status                # Show Gmail API authorization status
+    auth-utils gmail search <query>        # Search emails via Gmail API
 """
 
 from __future__ import annotations
@@ -764,6 +767,124 @@ def email_search(
         return 1
 
 
+# =============================================================================
+# Gmail API Commands
+# =============================================================================
+
+
+def gmail_auth() -> int:
+    """Authorize Gmail API access via OAuth."""
+    from auth_utils.gmail import GmailClient
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+
+    print("=" * 60)
+    print("GMAIL API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = GmailClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            print(f"User: {client.user_email}")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        print(f"User: {client.user_email}")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes gmail_readonly'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def gmail_status() -> int:
+    """Show Gmail API authorization status."""
+    from auth_utils.gmail import GmailClient
+
+    print("=" * 60)
+    print("GMAIL API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = GmailClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+            print(f"    User: {client.user_email}")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils gmail auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def gmail_search(query: str, limit: int) -> int:
+    """Search emails via Gmail API."""
+    from auth_utils.gmail import GmailClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    print("=" * 60)
+    print("SEARCHING EMAILS VIA GMAIL API")
+    print("=" * 60)
+    print()
+
+    try:
+        client = GmailClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils gmail auth' first.")
+            return 1
+
+        print(f"User: {client.user_email}")
+        print(f"Query: {query or '(all messages)'}")
+        print()
+
+        messages = client.search(query=query, max_results=limit)
+
+        if not messages:
+            print("No messages found.")
+            return 0
+
+        print(f"Found {len(messages)} message(s):\n")
+        for msg in messages:
+            date_str = msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else "unknown"
+            print(f"  [{date_str}] {msg.sender}")
+            print(f"    Subject: {msg.subject}")
+            print(f"    Preview: {msg.snippet[:80]}...")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils gmail auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -914,6 +1035,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Max messages to return (default: 10)",
     )
 
+    # Gmail API subcommand
+    gmail_parser = subparsers.add_parser("gmail", help="Gmail API management")
+    gmail_subparsers = gmail_parser.add_subparsers(dest="gmail_command", help="Command")
+
+    # gmail auth
+    gmail_subparsers.add_parser("auth", help="Authorize Gmail API access")
+
+    # gmail status
+    gmail_subparsers.add_parser("status", help="Show Gmail API authorization status")
+
+    # gmail search
+    gmail_search_parser = gmail_subparsers.add_parser("search", help="Search emails via Gmail API")
+    gmail_search_parser.add_argument(
+        "query",
+        nargs="?",
+        default="",
+        help="Gmail search query (e.g., 'from:user@example.com subject:test')",
+    )
+    gmail_search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max messages to return (default: 10)",
+    )
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -968,6 +1114,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             email_parser.print_help()
+            return 0
+
+    if args.command == "gmail":
+        if args.gmail_command == "auth":
+            return gmail_auth()
+        elif args.gmail_command == "status":
+            return gmail_status()
+        elif args.gmail_command == "search":
+            return gmail_search(args.query, args.limit)
+        else:
+            gmail_parser.print_help()
             return 0
 
     return 0
