@@ -10,12 +10,16 @@ Usage:
     auth-utils google revoke               # Revoke OAuth token
     auth-utils google import <path>        # Import OAuth credentials
     auth-utils google import-key <path>    # Import service account key
+    auth-utils email status                # Show email/SMTP credential status
+    auth-utils email test <provider>       # Test SMTP connection
+    auth-utils email store-password <provider>  # Store password in Keychain
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import json
 import shutil
 import sys
@@ -128,6 +132,20 @@ def cmd_status() -> int:
     print(f"  Library ID: {'[x]' if status['zotero']['library_id'] else '[ ]'}")
     print()
 
+    # Email/SMTP
+    print("Email/SMTP:")
+    email_status = status.get("email", {})
+    gmail = email_status.get("gmail", {})
+    if gmail.get("keychain"):
+        print(f"  [x] Gmail Keychain: {gmail.get('keychain_user', 'configured')}")
+    else:
+        print("  [ ] Gmail Keychain: not configured")
+    if gmail.get("env"):
+        print(f"  [x] Gmail Environment: {gmail.get('env_user', 'configured')}")
+    else:
+        print("  [ ] Gmail Environment: not configured")
+    print()
+
     return 0
 
 
@@ -156,6 +174,11 @@ def cmd_test() -> int:
     # Test Zotero
     print("Zotero:")
     all_passed &= _test_zotero()
+    print()
+
+    # Test Email/SMTP
+    print("Email/SMTP:")
+    all_passed &= _test_email()
     print()
 
     if all_passed:
@@ -239,6 +262,31 @@ def _test_zotero() -> bool:
         return True
     except Exception as e:
         print(f"  [✗] {e}")
+        return False
+
+
+def _test_email() -> bool:
+    """Test email/SMTP connections."""
+    from auth_utils.config import get_credential_status
+
+    status = get_credential_status()
+    email_status = status.get("email", {})
+    gmail = email_status.get("gmail", {})
+
+    if not gmail.get("keychain") and not gmail.get("env"):
+        print("  [ ] gmail - not configured")
+        return True  # Not a failure if not configured
+
+    try:
+        from auth_utils.email import SMTPClient
+
+        client = SMTPClient(provider="gmail")
+        client.test_connection()
+        user = client.user
+        print(f"  [✓] gmail - {user}")
+        return True
+    except Exception as e:
+        print(f"  [✗] gmail - {e}")
         return False
 
 
@@ -463,6 +511,142 @@ def parse_scopes(scope_str: str | None) -> list[str]:
     return [s.strip() for s in scope_str.split(",")]
 
 
+# =============================================================================
+# Email Commands
+# =============================================================================
+
+
+def email_status() -> int:
+    """Show email/SMTP credential status."""
+    import os
+
+    from auth_utils.email.providers.gmail import get_gmail_keychain_status
+
+    print("=" * 60)
+    print("EMAIL/SMTP CREDENTIAL STATUS")
+    print("=" * 60)
+    print()
+
+    # Gmail
+    print("Gmail (smtp.gmail.com):")
+    kc_status = get_gmail_keychain_status()
+    if kc_status["configured"]:
+        print(f"  [x] Keychain: {kc_status['user']}")
+    else:
+        print("  [ ] Keychain: not configured")
+
+    env_user = os.environ.get("GMAIL_SMTP_USER")
+    env_pass = os.environ.get("GMAIL_SMTP_PASSWORD")
+    if env_user and env_pass:
+        print(f"  [x] Environment: {env_user}")
+    elif env_user:
+        print(f"  [ ] Environment: {env_user} (no password)")
+    else:
+        print("  [ ] Environment: not configured")
+
+    print()
+    return 0
+
+
+def email_test(provider: str, recipient: str | None = None) -> int:
+    """Test SMTP connection."""
+    from auth_utils.email import SMTPAuthError, SMTPClient, SMTPConnectionError
+
+    print("=" * 60)
+    print(f"TESTING {provider.upper()} SMTP")
+    print("=" * 60)
+    print()
+
+    try:
+        client = SMTPClient(provider=provider)
+        user = client.user
+        print(f"User: {user}")
+        print(f"Server: {client._provider.host}:{client._provider.port}")
+        print()
+
+        print("Testing connection...", end=" ", flush=True)
+        client.test_connection()
+        print("[OK]")
+
+        if recipient:
+            print(f"Sending test email to {recipient}...", end=" ", flush=True)
+            client.send(
+                to=[recipient],
+                subject="auth-utils: Test Email",
+                body="<p>This is a test email from <code>auth-utils email test</code>.</p>"
+                "<p>If you received this, your SMTP configuration is working.</p>",
+                html=True,
+            )
+            print("[OK]")
+
+        print()
+        print("SMTP configuration is working!")
+        return 0
+
+    except SMTPAuthError as e:
+        print("[FAILED]")
+        print(f"\nAuthentication error: {e}")
+        print("\nTips:")
+        print("  - Ensure 2-Step Verification is enabled on your Google account")
+        print("  - Generate an App Password at: https://myaccount.google.com/apppasswords")
+        print("  - Use the 16-character app password, not your regular password")
+        return 1
+
+    except SMTPConnectionError as e:
+        print("[FAILED]")
+        print(f"\nConnection error: {e}")
+        return 1
+
+    except Exception as e:
+        print("[FAILED]")
+        print(f"\nError: {e}")
+        return 1
+
+
+def email_store_password(provider: str) -> int:
+    """Store SMTP password in macOS Keychain."""
+    if sys.platform != "darwin":
+        print("Error: Keychain storage is only available on macOS")
+        return 1
+
+    if provider != "gmail":
+        print(f"Error: Unknown provider '{provider}'. Supported: gmail")
+        return 1
+
+    from auth_utils.email.providers.gmail import store_gmail_password
+
+    print("=" * 60)
+    print("STORE GMAIL PASSWORD IN KEYCHAIN")
+    print("=" * 60)
+    print()
+    print("This will store your Gmail app password in macOS Keychain.")
+    print()
+    print("To get an app password:")
+    print("  1. Enable 2-Step Verification: https://myaccount.google.com/security")
+    print("  2. Create App Password: https://myaccount.google.com/apppasswords")
+    print()
+
+    user = input("Gmail address: ").strip()
+    if not user:
+        print("No email provided; aborting.")
+        return 1
+
+    password = getpass.getpass("App password: ")
+    if not password:
+        print("No password provided; aborting.")
+        return 1
+
+    if store_gmail_password(user, password):
+        print()
+        print(f"Password stored in Keychain as 'auth-utils-gmail' for {user}")
+        print("Test with: auth-utils email test gmail")
+        return 0
+    else:
+        print()
+        print("Failed to store password in Keychain")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -535,6 +719,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     import_key_parser.add_argument("path", help="Path to service account JSON key file")
 
+    # Email subcommand
+    email_parser = subparsers.add_parser("email", help="Email/SMTP management")
+    email_subparsers = email_parser.add_subparsers(dest="email_command", help="Command")
+
+    # email status
+    email_subparsers.add_parser("status", help="Show SMTP credential status")
+
+    # email test
+    email_test_parser = email_subparsers.add_parser("test", help="Test SMTP connection")
+    email_test_parser.add_argument(
+        "provider",
+        nargs="?",
+        default="gmail",
+        help="Provider name (default: gmail)",
+    )
+    email_test_parser.add_argument(
+        "--to",
+        type=str,
+        help="Send test email to this address",
+    )
+
+    # email store-password
+    email_store_parser = email_subparsers.add_parser(
+        "store-password", help="Store password in Keychain"
+    )
+    email_store_parser.add_argument(
+        "provider",
+        nargs="?",
+        default="gmail",
+        help="Provider name (default: gmail)",
+    )
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -567,6 +783,17 @@ def main(argv: list[str] | None = None) -> int:
             return google_import_key(args.path)
         else:
             google_parser.print_help()
+            return 0
+
+    if args.command == "email":
+        if args.email_command == "status":
+            return email_status()
+        elif args.email_command == "test":
+            return email_test(args.provider, args.to)
+        elif args.email_command == "store-password":
+            return email_store_password(args.provider)
+        else:
+            email_parser.print_help()
             return 0
 
     return 0
