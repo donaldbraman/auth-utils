@@ -1,6 +1,6 @@
 # Claude Code Instructions for auth-utils
 
-Shared authentication infrastructure for LLM providers (Claude, Gemini, ChatGPT), Google APIs, and Zotero.
+Shared authentication infrastructure for LLM providers (Claude, Gemini, ChatGPT), Google APIs, Email/SMTP, and Zotero.
 
 ---
 
@@ -32,6 +32,8 @@ Shared authentication infrastructure for LLM providers (Claude, Gemini, ChatGPT)
 | `src/auth_utils/llm/models.py` | Message, LLMResponse, UsageStats |
 | `src/auth_utils/google/oauth.py` | GoogleOAuth for user consent flows |
 | `src/auth_utils/google/service_account.py` | GoogleServiceAccount for automation |
+| `src/auth_utils/email/smtp.py` | SMTPClient for sending emails |
+| `src/auth_utils/email/providers/gmail.py` | Gmail SMTP with Keychain support |
 | `src/auth_utils/zotero/client.py` | ZoteroClient with local+cloud support |
 
 ---
@@ -43,8 +45,15 @@ Shared authentication infrastructure for LLM providers (Claude, Gemini, ChatGPT)
 | `ANTHROPIC_API_KEY` | Claude |
 | `OPENAI_API_KEY` | ChatGPT |
 | `GOOGLE_API_KEY` | Gemini |
-| `ZOTERO_API_KEY` | Zotero cloud |
-| `ZOTERO_LIBRARY_ID` | Zotero library |
+| `ZOTERO_API_KEY` | Zotero API key |
+| `ZOTERO_LIBRARY_ID` | Zotero library ID |
+| `GMAIL_SMTP_USER` | Gmail address (or use Keychain) |
+| `GMAIL_SMTP_PASSWORD` | Gmail app password (or use Keychain) |
+| `COURTLISTENER_API_TOKEN` | CourtListener (full opinion text) |
+
+**Note:** CourtListener tokens expire every 90 days. Refresh at https://www.courtlistener.com/profile/
+
+**Note:** Gmail credentials can alternatively be stored in macOS Keychain via `auth-utils email store-password gmail`.
 
 ---
 
@@ -83,6 +92,11 @@ response = await client.chat([Message(role="user", content="Hello")])
 # Google OAuth
 from auth_utils.google import GoogleOAuth
 auth = GoogleOAuth(scopes=["docs", "drive"])
+
+# Email/SMTP
+from auth_utils.email import SMTPClient
+client = SMTPClient(provider="gmail")  # uses Keychain or env vars
+client.send(to=["recipient@example.com"], subject="Hello", body="Message")
 
 # Zotero
 from auth_utils.zotero import ZoteroClient

@@ -229,6 +229,85 @@ except ZoteroAPIError as e:
 
 ---
 
+## Email/SMTP
+
+Send emails via Gmail SMTP with centralized credential management.
+
+### Credential Storage
+
+Credentials are loaded in priority order:
+1. **macOS Keychain** (service: `auth-utils-gmail`) - recommended
+2. **Environment variables** (`GMAIL_SMTP_USER`, `GMAIL_SMTP_PASSWORD`)
+3. **Explicit arguments** to `SMTPClient()`
+
+### Setup
+
+```bash
+# Option 1: Store in Keychain (recommended, macOS only)
+auth-utils email store-password gmail
+
+# Option 2: Environment variables
+export GMAIL_SMTP_USER="user@gmail.com"
+export GMAIL_SMTP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+```
+
+**Note:** Gmail requires an App Password, not your regular password:
+1. Enable 2-Step Verification: https://myaccount.google.com/security
+2. Create App Password: https://myaccount.google.com/apppasswords
+
+### Usage
+
+```python
+from auth_utils.email import SMTPClient
+
+# Auto-detect credentials from Keychain/env
+client = SMTPClient(provider="gmail")
+
+# Send HTML email
+client.send(
+    to=["student@law.gwu.edu"],
+    subject="On-call notification",
+    body="<p>You're on-call for Wednesday's class.</p>",
+    html=True,
+)
+
+# With CC/BCC and display name
+client.send(
+    to=["student@law.gwu.edu"],
+    cc=["ta@law.gwu.edu"],
+    subject="On-call notification",
+    body="Message body",
+    from_name="Professor Smith",
+)
+```
+
+### Error Handling
+
+```python
+from auth_utils.email import SMTPClient, SMTPAuthError, SMTPConnectionError, SMTPSendError
+
+try:
+    client = SMTPClient(provider="gmail")
+    client.send(to=["recipient@example.com"], subject="Test", body="Hello")
+except SMTPAuthError as e:
+    print(f"Authentication failed: {e}")
+except SMTPConnectionError as e:
+    print(f"Connection failed: {e}")
+except SMTPSendError as e:
+    print(f"Send failed: {e}")
+```
+
+### CLI
+
+```bash
+auth-utils email status                # Show credential status
+auth-utils email test gmail            # Test SMTP connection
+auth-utils email test gmail --to x@y   # Send test email
+auth-utils email store-password gmail  # Store password in Keychain
+```
+
+---
+
 ## Direct Gemini Model Access
 
 For use cases requiring direct genai client access (binary content, PDF extraction):

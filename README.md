@@ -15,6 +15,7 @@ For sibling repos, see [docs/integration-guide.md](docs/integration-guide.md).
 - **LLM Providers**: Unified client for Claude, Gemini, ChatGPT
 - **Google OAuth**: OAuth 2.0 for Docs, Drive, Sheets
 - **Google Service Account**: For server automation
+- **Email/SMTP**: Gmail SMTP with Keychain credential storage
 - **Zotero API**: Authentication for citation management
 
 ## LLM Client
@@ -98,6 +99,31 @@ auth = GoogleServiceAccount(key_path="service_account_key.json", scopes=["docs",
 print(auth.email)  # Share docs with this email
 
 docs = auth.build_service("docs", "v1")
+```
+
+## Email/SMTP
+
+Credentials loaded from: macOS Keychain → environment variables → explicit args.
+
+```bash
+# Store password in Keychain (recommended)
+auth-utils email store-password gmail
+
+# Or use environment variables
+export GMAIL_SMTP_USER="user@gmail.com"
+export GMAIL_SMTP_PASSWORD="xxxx-xxxx-xxxx-xxxx"  # App password
+```
+
+```python
+from auth_utils.email import SMTPClient
+
+client = SMTPClient(provider="gmail")
+client.send(
+    to=["recipient@example.com"],
+    subject="Hello",
+    body="<p>HTML message</p>",
+    html=True,
+)
 ```
 
 ## Zotero
