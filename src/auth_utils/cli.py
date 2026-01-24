@@ -24,6 +24,25 @@ Usage:
     auth-utils tasks list                  # List tasks
     auth-utils tasks add <title>           # Add a task
     auth-utils tasks complete <id>         # Complete a task
+    auth-utils calendar auth               # Authorize Google Calendar API
+    auth-utils calendar status             # Show Calendar authorization status
+    auth-utils calendar list               # List calendars
+    auth-utils calendar events             # List upcoming events
+    auth-utils calendar add <summary>      # Add an event
+    auth-utils drive auth                  # Authorize Google Drive API
+    auth-utils drive status                # Show Drive authorization status
+    auth-utils drive list                  # List files
+    auth-utils drive upload <file>         # Upload a file
+    auth-utils drive download <id> <path>  # Download a file
+    auth-utils docs auth                   # Authorize Google Docs API
+    auth-utils docs status                 # Show Docs authorization status
+    auth-utils docs get <id>               # Get document content
+    auth-utils docs create <title>         # Create a document
+    auth-utils sheets auth                 # Authorize Google Sheets API
+    auth-utils sheets status               # Show Sheets authorization status
+    auth-utils sheets get <id>             # Get spreadsheet info
+    auth-utils sheets read <id> <range>    # Read cell values
+    auth-utils sheets write <id> <range>   # Write cell values
 """
 
 from __future__ import annotations
@@ -1134,6 +1153,805 @@ def tasks_delete(task_id: str, tasklist_id: str) -> int:
         return 1
 
 
+# =============================================================================
+# Google Calendar Commands
+# =============================================================================
+
+
+def calendar_auth() -> int:
+    """Authorize Google Calendar API access via OAuth."""
+    from auth_utils.calendar import CalendarClient
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+
+    print("=" * 60)
+    print("GOOGLE CALENDAR API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = CalendarClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            calendars = client.list_calendars()
+            print(f"Found {len(calendars)} calendar(s)")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        calendars = client.list_calendars()
+        print(f"Found {len(calendars)} calendar(s)")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes calendar'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def calendar_status() -> int:
+    """Show Google Calendar API authorization status."""
+    from auth_utils.calendar import CalendarClient
+
+    print("=" * 60)
+    print("GOOGLE CALENDAR API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = CalendarClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+            calendars = client.list_calendars()
+            print(f"    Calendars: {len(calendars)}")
+            for cal in calendars[:5]:
+                primary = " (primary)" if cal.primary else ""
+                print(f"      - {cal.summary}{primary}")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils calendar auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def calendar_list() -> int:
+    """List all calendars."""
+    from auth_utils.calendar import CalendarClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = CalendarClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils calendar auth' first.")
+            return 1
+
+        calendars = client.list_calendars()
+
+        if not calendars:
+            print("No calendars found.")
+            return 0
+
+        print(f"Found {len(calendars)} calendar(s):\n")
+        for cal in calendars:
+            primary = " (primary)" if cal.primary else ""
+            print(f"  {cal.id}")
+            print(f"    Name: {cal.summary}{primary}")
+            if cal.description:
+                print(f"    Description: {cal.description[:50]}...")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils calendar auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def calendar_events(calendar_id: str, limit: int) -> int:
+    """List upcoming events."""
+    from auth_utils.calendar import CalendarClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = CalendarClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils calendar auth' first.")
+            return 1
+
+        events = client.list_events(calendar_id=calendar_id, max_results=limit)
+
+        if not events:
+            print("No upcoming events found.")
+            return 0
+
+        print(f"Found {len(events)} upcoming event(s):\n")
+        for event in events:
+            start_str = event.start.strftime("%Y-%m-%d %H:%M") if event.start else "unknown"
+            print(f"  [{start_str}] {event.summary}")
+            print(f"      ID: {event.id}")
+            if event.location:
+                print(f"      Location: {event.location}")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils calendar auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def calendar_add(
+    summary: str,
+    start: str,
+    end: str | None,
+    calendar_id: str,
+    description: str | None,
+    location: str | None,
+) -> int:
+    """Add a calendar event."""
+    from auth_utils.calendar import CalendarClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = CalendarClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils calendar auth' first.")
+            return 1
+
+        event = client.create_event(
+            summary=summary,
+            start=start,
+            end=end,
+            calendar_id=calendar_id,
+            description=description,
+            location=location,
+        )
+
+        print(f"Event created: {event.summary}")
+        print(f"  ID: {event.id}")
+        if event.start:
+            print(f"  Start: {event.start}")
+        if event.html_link:
+            print(f"  Link: {event.html_link}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils calendar auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def calendar_delete(event_id: str, calendar_id: str) -> int:
+    """Delete a calendar event."""
+    from auth_utils.calendar import CalendarClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = CalendarClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils calendar auth' first.")
+            return 1
+
+        if client.delete_event(event_id=event_id, calendar_id=calendar_id):
+            print("Event deleted.")
+        else:
+            print("Failed to delete event.")
+            return 1
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils calendar auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+# =============================================================================
+# Google Drive Commands
+# =============================================================================
+
+
+def drive_auth() -> int:
+    """Authorize Google Drive API access via OAuth."""
+    from auth_utils.drive import DriveClient
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+
+    print("=" * 60)
+    print("GOOGLE DRIVE API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = DriveClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            files = client.list_files(max_results=5)
+            print(f"Found {len(files)}+ files")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        files = client.list_files(max_results=5)
+        print(f"Found {len(files)}+ files")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes drive'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def drive_status() -> int:
+    """Show Google Drive API authorization status."""
+    from auth_utils.drive import DriveClient
+
+    print("=" * 60)
+    print("GOOGLE DRIVE API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = DriveClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+            files = client.list_files(max_results=5)
+            print(f"    Recent files: {len(files)}+")
+            for f in files[:3]:
+                icon = "/" if f.is_folder else " "
+                print(f"      {icon} {f.name}")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils drive auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def drive_list(folder_id: str | None, limit: int, query: str | None) -> int:
+    """List files in Drive."""
+    from auth_utils.drive import DriveClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DriveClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils drive auth' first.")
+            return 1
+
+        files = client.list_files(folder_id=folder_id, max_results=limit, query=query)
+
+        if not files:
+            print("No files found.")
+            return 0
+
+        print(f"Found {len(files)} file(s):\n")
+        for f in files:
+            icon = "/" if f.is_folder else " "
+            size_str = f" ({f.size} bytes)" if f.size else ""
+            print(f"  {icon} {f.name}{size_str}")
+            print(f"      ID: {f.id}")
+            if f.modified_time:
+                print(f"      Modified: {f.modified_time.strftime('%Y-%m-%d %H:%M')}")
+            print()
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils drive auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def drive_upload(file_path: str, name: str | None, folder_id: str | None) -> int:
+    """Upload a file to Drive."""
+    from auth_utils.drive import DriveClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DriveClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils drive auth' first.")
+            return 1
+
+        path = Path(file_path)
+        if not path.exists():
+            print(f"Error: File not found: {file_path}")
+            return 1
+
+        upload_name = name or path.name
+        print(f"Uploading {path.name}...", end=" ", flush=True)
+
+        uploaded = client.upload_file(
+            name=upload_name,
+            file_path=path,
+            folder_id=folder_id,
+        )
+
+        print("[OK]")
+        print(f"  Name: {uploaded.name}")
+        print(f"  ID: {uploaded.id}")
+        if uploaded.web_view_link:
+            print(f"  Link: {uploaded.web_view_link}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils drive auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def drive_download(file_id: str, output_path: str) -> int:
+    """Download a file from Drive."""
+    from auth_utils.drive import DriveClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DriveClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils drive auth' first.")
+            return 1
+
+        # Get file info
+        file_info = client.get_file(file_id)
+        if not file_info:
+            print(f"Error: File not found: {file_id}")
+            return 1
+
+        print(f"Downloading {file_info.name}...", end=" ", flush=True)
+
+        if client.download_file(file_id, output_path):
+            print("[OK]")
+            print(f"  Saved to: {output_path}")
+            return 0
+        else:
+            print("[FAILED]")
+            return 1
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils drive auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def drive_delete(file_id: str) -> int:
+    """Delete a file from Drive."""
+    from auth_utils.drive import DriveClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DriveClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils drive auth' first.")
+            return 1
+
+        if client.delete_file(file_id):
+            print("File deleted.")
+        else:
+            print("Failed to delete file.")
+            return 1
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils drive auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+# =============================================================================
+# Google Docs Commands
+# =============================================================================
+
+
+def docs_auth() -> int:
+    """Authorize Google Docs API access via OAuth."""
+    from auth_utils.docs import DocsClient
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+
+    print("=" * 60)
+    print("GOOGLE DOCS API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = DocsClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes docs,drive_file'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def docs_status() -> int:
+    """Show Google Docs API authorization status."""
+    from auth_utils.docs import DocsClient
+
+    print("=" * 60)
+    print("GOOGLE DOCS API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = DocsClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils docs auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def docs_get(document_id: str) -> int:
+    """Get document content."""
+    from auth_utils.docs import DocsClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DocsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils docs auth' first.")
+            return 1
+
+        doc = client.get_document(document_id)
+
+        if not doc:
+            print(f"Error: Document not found: {document_id}")
+            return 1
+
+        print(f"Title: {doc.title}")
+        print(f"ID: {doc.id}")
+        print(f"Words: ~{doc.word_count}")
+        print()
+        print("Content:")
+        print("-" * 40)
+        print(doc.body_text[:2000])
+        if len(doc.body_text) > 2000:
+            print(f"\n... ({len(doc.body_text) - 2000} more characters)")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils docs auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def docs_create(title: str, body: str | None) -> int:
+    """Create a new document."""
+    from auth_utils.docs import DocsClient
+    from auth_utils.google.exceptions import AuthorizationRequired
+
+    try:
+        client = DocsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils docs auth' first.")
+            return 1
+
+        doc = client.create_document(title=title, body_text=body)
+
+        print(f"Document created: {doc.title}")
+        print(f"  ID: {doc.id}")
+        print(f"  URL: https://docs.google.com/document/d/{doc.id}/edit")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils docs auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+# =============================================================================
+# Google Sheets Commands
+# =============================================================================
+
+
+def sheets_auth() -> int:
+    """Authorize Google Sheets API access via OAuth."""
+    from auth_utils.google.exceptions import AuthorizationRequired, TokenError
+    from auth_utils.sheets import SheetsClient
+
+    print("=" * 60)
+    print("GOOGLE SHEETS API AUTHORIZATION")
+    print("=" * 60)
+    print()
+
+    try:
+        client = SheetsClient()
+
+        if client.is_authorized():
+            print("Already authorized!")
+            return 0
+
+        print("Opening browser for OAuth authorization...")
+        print()
+        client.authorize()
+        print()
+        print("Authorization successful!")
+        return 0
+
+    except AuthorizationRequired as e:
+        print("Could not open browser automatically.")
+        print(f"\nVisit this URL to authorize:\n{e.auth_url}")
+        print("\nThen run 'auth-utils google login --scopes sheets,drive_file'")
+        return 1
+
+    except TokenError as e:
+        print(f"Authorization failed: {e}")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def sheets_status() -> int:
+    """Show Google Sheets API authorization status."""
+    from auth_utils.sheets import SheetsClient
+
+    print("=" * 60)
+    print("GOOGLE SHEETS API STATUS")
+    print("=" * 60)
+    print()
+
+    try:
+        client = SheetsClient()
+
+        if client.is_authorized():
+            print("[x] Authorized")
+        else:
+            print("[ ] Not authorized")
+            print("    Run 'auth-utils sheets auth' to authorize")
+
+        return 0
+
+    except Exception as e:
+        print(f"[ ] Error checking status: {e}")
+        return 1
+
+
+def sheets_get(spreadsheet_id: str) -> int:
+    """Get spreadsheet info."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.sheets import SheetsClient
+
+    try:
+        client = SheetsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils sheets auth' first.")
+            return 1
+
+        spreadsheet = client.get_spreadsheet(spreadsheet_id)
+
+        if not spreadsheet:
+            print(f"Error: Spreadsheet not found: {spreadsheet_id}")
+            return 1
+
+        print(f"Title: {spreadsheet.title}")
+        print(f"ID: {spreadsheet.id}")
+        if spreadsheet.url:
+            print(f"URL: {spreadsheet.url}")
+        print()
+        print("Sheets:")
+        for sheet in spreadsheet.sheets or []:
+            print(f"  - {sheet.title} ({sheet.row_count}x{sheet.column_count})")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils sheets auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def sheets_read(spreadsheet_id: str, range_notation: str) -> int:
+    """Read values from a range."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.sheets import SheetsClient
+
+    try:
+        client = SheetsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils sheets auth' first.")
+            return 1
+
+        values = client.read_range(spreadsheet_id, range_notation)
+
+        if not values:
+            print("No data found in range.")
+            return 0
+
+        print(f"Range: {range_notation}")
+        print(f"Rows: {len(values)}")
+        print()
+        for i, row in enumerate(values[:20]):
+            row_str = " | ".join(str(cell) for cell in row)
+            print(f"  {i + 1}: {row_str}")
+        if len(values) > 20:
+            print(f"  ... ({len(values) - 20} more rows)")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils sheets auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def sheets_write(spreadsheet_id: str, range_notation: str, values_str: str) -> int:
+    """Write values to a range."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.sheets import SheetsClient
+
+    try:
+        client = SheetsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils sheets auth' first.")
+            return 1
+
+        # Parse values (comma-separated, semicolon for rows)
+        # e.g., "a,b,c;d,e,f" -> [["a","b","c"],["d","e","f"]]
+        rows = values_str.split(";")
+        values = [row.split(",") for row in rows]
+
+        cells_updated = client.write_range(spreadsheet_id, range_notation, values)
+
+        print(f"Updated {cells_updated} cell(s) at {range_notation}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils sheets auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def sheets_create(title: str) -> int:
+    """Create a new spreadsheet."""
+    from auth_utils.google.exceptions import AuthorizationRequired
+    from auth_utils.sheets import SheetsClient
+
+    try:
+        client = SheetsClient()
+
+        if not client.is_authorized():
+            print("Not authorized. Run 'auth-utils sheets auth' first.")
+            return 1
+
+        spreadsheet = client.create_spreadsheet(title=title)
+
+        print(f"Spreadsheet created: {spreadsheet.title}")
+        print(f"  ID: {spreadsheet.id}")
+        if spreadsheet.url:
+            print(f"  URL: {spreadsheet.url}")
+
+        return 0
+
+    except AuthorizationRequired:
+        print("Not authorized. Run 'auth-utils sheets auth' first.")
+        return 1
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1377,6 +2195,177 @@ def main(argv: list[str] | None = None) -> int:
         help="Task list ID (default: @default)",
     )
 
+    # Calendar API subcommand
+    calendar_parser = subparsers.add_parser("calendar", help="Google Calendar management")
+    calendar_subparsers = calendar_parser.add_subparsers(dest="calendar_command", help="Command")
+
+    # calendar auth
+    calendar_subparsers.add_parser("auth", help="Authorize Google Calendar API")
+
+    # calendar status
+    calendar_subparsers.add_parser("status", help="Show Calendar authorization status")
+
+    # calendar list
+    calendar_subparsers.add_parser("list", help="List all calendars")
+
+    # calendar events
+    calendar_events_parser = calendar_subparsers.add_parser("events", help="List upcoming events")
+    calendar_events_parser.add_argument(
+        "--calendar",
+        type=str,
+        default="primary",
+        help="Calendar ID (default: primary)",
+    )
+    calendar_events_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max events to return (default: 10)",
+    )
+
+    # calendar add
+    calendar_add_parser = calendar_subparsers.add_parser("add", help="Add an event")
+    calendar_add_parser.add_argument("summary", help="Event title")
+    calendar_add_parser.add_argument("start", help="Start time (ISO format: YYYY-MM-DDTHH:MM:SS)")
+    calendar_add_parser.add_argument(
+        "--end",
+        type=str,
+        help="End time (defaults to 1 hour after start)",
+    )
+    calendar_add_parser.add_argument(
+        "--calendar",
+        type=str,
+        default="primary",
+        help="Calendar ID (default: primary)",
+    )
+    calendar_add_parser.add_argument(
+        "--description",
+        type=str,
+        help="Event description",
+    )
+    calendar_add_parser.add_argument(
+        "--location",
+        type=str,
+        help="Event location",
+    )
+
+    # calendar delete
+    calendar_delete_parser = calendar_subparsers.add_parser("delete", help="Delete an event")
+    calendar_delete_parser.add_argument("event_id", help="Event ID to delete")
+    calendar_delete_parser.add_argument(
+        "--calendar",
+        type=str,
+        default="primary",
+        help="Calendar ID (default: primary)",
+    )
+
+    # Drive API subcommand
+    drive_parser = subparsers.add_parser("drive", help="Google Drive management")
+    drive_subparsers = drive_parser.add_subparsers(dest="drive_command", help="Command")
+
+    # drive auth
+    drive_subparsers.add_parser("auth", help="Authorize Google Drive API")
+
+    # drive status
+    drive_subparsers.add_parser("status", help="Show Drive authorization status")
+
+    # drive list
+    drive_list_parser = drive_subparsers.add_parser("list", help="List files")
+    drive_list_parser.add_argument(
+        "--folder",
+        type=str,
+        help="Folder ID to list files in",
+    )
+    drive_list_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Max files to return (default: 20)",
+    )
+    drive_list_parser.add_argument(
+        "--query",
+        type=str,
+        help="Search query (Drive query syntax)",
+    )
+
+    # drive upload
+    drive_upload_parser = drive_subparsers.add_parser("upload", help="Upload a file")
+    drive_upload_parser.add_argument("file", help="Local file path to upload")
+    drive_upload_parser.add_argument(
+        "--name",
+        type=str,
+        help="Name for file in Drive (defaults to local filename)",
+    )
+    drive_upload_parser.add_argument(
+        "--folder",
+        type=str,
+        help="Destination folder ID",
+    )
+
+    # drive download
+    drive_download_parser = drive_subparsers.add_parser("download", help="Download a file")
+    drive_download_parser.add_argument("file_id", help="Drive file ID")
+    drive_download_parser.add_argument("output", help="Local output path")
+
+    # drive delete
+    drive_delete_parser = drive_subparsers.add_parser("delete", help="Delete a file")
+    drive_delete_parser.add_argument("file_id", help="Drive file ID to delete")
+
+    # Docs API subcommand
+    docs_parser = subparsers.add_parser("docs", help="Google Docs management")
+    docs_subparsers = docs_parser.add_subparsers(dest="docs_command", help="Command")
+
+    # docs auth
+    docs_subparsers.add_parser("auth", help="Authorize Google Docs API")
+
+    # docs status
+    docs_subparsers.add_parser("status", help="Show Docs authorization status")
+
+    # docs get
+    docs_get_parser = docs_subparsers.add_parser("get", help="Get document content")
+    docs_get_parser.add_argument("document_id", help="Document ID")
+
+    # docs create
+    docs_create_parser = docs_subparsers.add_parser("create", help="Create a document")
+    docs_create_parser.add_argument("title", help="Document title")
+    docs_create_parser.add_argument(
+        "--body",
+        type=str,
+        help="Initial body text",
+    )
+
+    # Sheets API subcommand
+    sheets_parser = subparsers.add_parser("sheets", help="Google Sheets management")
+    sheets_subparsers = sheets_parser.add_subparsers(dest="sheets_command", help="Command")
+
+    # sheets auth
+    sheets_subparsers.add_parser("auth", help="Authorize Google Sheets API")
+
+    # sheets status
+    sheets_subparsers.add_parser("status", help="Show Sheets authorization status")
+
+    # sheets get
+    sheets_get_parser = sheets_subparsers.add_parser("get", help="Get spreadsheet info")
+    sheets_get_parser.add_argument("spreadsheet_id", help="Spreadsheet ID")
+
+    # sheets read
+    sheets_read_parser = sheets_subparsers.add_parser("read", help="Read values from a range")
+    sheets_read_parser.add_argument("spreadsheet_id", help="Spreadsheet ID")
+    sheets_read_parser.add_argument("range", help="Range in A1 notation (e.g., Sheet1!A1:C10)")
+
+    # sheets write
+    sheets_write_parser = sheets_subparsers.add_parser("write", help="Write values to a range")
+    sheets_write_parser.add_argument("spreadsheet_id", help="Spreadsheet ID")
+    sheets_write_parser.add_argument("range", help="Range in A1 notation (e.g., Sheet1!A1)")
+    sheets_write_parser.add_argument(
+        "values",
+        help="Values to write (comma-separated, semicolon for rows: a,b,c;d,e,f)",
+    )
+
+    # sheets create
+    sheets_create_parser = sheets_subparsers.add_parser("create", help="Create a spreadsheet")
+    sheets_create_parser.add_argument("title", help="Spreadsheet title")
+
     args = parser.parse_args(argv or sys.argv[1:])
 
     if args.command is None:
@@ -1461,6 +2450,77 @@ def main(argv: list[str] | None = None) -> int:
             return tasks_delete(args.task_id, args.tasklist)
         else:
             tasks_parser.print_help()
+            return 0
+
+    if args.command == "calendar":
+        if args.calendar_command == "auth":
+            return calendar_auth()
+        elif args.calendar_command == "status":
+            return calendar_status()
+        elif args.calendar_command == "list":
+            return calendar_list()
+        elif args.calendar_command == "events":
+            return calendar_events(args.calendar, args.limit)
+        elif args.calendar_command == "add":
+            return calendar_add(
+                args.summary,
+                args.start,
+                args.end,
+                args.calendar,
+                args.description,
+                args.location,
+            )
+        elif args.calendar_command == "delete":
+            return calendar_delete(args.event_id, args.calendar)
+        else:
+            calendar_parser.print_help()
+            return 0
+
+    if args.command == "drive":
+        if args.drive_command == "auth":
+            return drive_auth()
+        elif args.drive_command == "status":
+            return drive_status()
+        elif args.drive_command == "list":
+            return drive_list(args.folder, args.limit, args.query)
+        elif args.drive_command == "upload":
+            return drive_upload(args.file, args.name, args.folder)
+        elif args.drive_command == "download":
+            return drive_download(args.file_id, args.output)
+        elif args.drive_command == "delete":
+            return drive_delete(args.file_id)
+        else:
+            drive_parser.print_help()
+            return 0
+
+    if args.command == "docs":
+        if args.docs_command == "auth":
+            return docs_auth()
+        elif args.docs_command == "status":
+            return docs_status()
+        elif args.docs_command == "get":
+            return docs_get(args.document_id)
+        elif args.docs_command == "create":
+            return docs_create(args.title, args.body)
+        else:
+            docs_parser.print_help()
+            return 0
+
+    if args.command == "sheets":
+        if args.sheets_command == "auth":
+            return sheets_auth()
+        elif args.sheets_command == "status":
+            return sheets_status()
+        elif args.sheets_command == "get":
+            return sheets_get(args.spreadsheet_id)
+        elif args.sheets_command == "read":
+            return sheets_read(args.spreadsheet_id, args.range)
+        elif args.sheets_command == "write":
+            return sheets_write(args.spreadsheet_id, args.range, args.values)
+        elif args.sheets_command == "create":
+            return sheets_create(args.title)
+        else:
+            sheets_parser.print_help()
             return 0
 
     return 0
