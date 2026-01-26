@@ -13,6 +13,22 @@ Sending emails (SMTP):
         body="Message body",
     )
 
+Bulk sending with rate limiting:
+    from auth_utils.email import SMTPClient, RateLimitConfig
+
+    client = SMTPClient(provider="gmail")
+    recipients = [
+        {"email": "alice@example.com", "name": "Alice"},
+        {"email": "bob@example.com", "name": "Bob"},
+    ]
+    result = client.send_bulk(
+        recipients=recipients,
+        subject="Class Update",
+        body_template="Dear {name},\\n\\nPlease watch the video.",
+        from_name="Professor Smith",
+    )
+    print(f"Sent: {result.sent}/{result.total}")
+
 Reading emails (IMAP):
     from auth_utils.email import IMAPClient
 
@@ -40,7 +56,7 @@ from auth_utils.email.exceptions import (
     SMTPSendError,
 )
 from auth_utils.email.imap import EmailMessage, IMAPClient
-from auth_utils.email.smtp import SMTPClient
+from auth_utils.email.smtp import BulkSendResult, RateLimitConfig, SMTPClient
 
 __all__ = [
     "SMTPClient",
@@ -50,4 +66,6 @@ __all__ = [
     "SMTPAuthError",
     "SMTPConnectionError",
     "SMTPSendError",
+    "RateLimitConfig",
+    "BulkSendResult",
 ]

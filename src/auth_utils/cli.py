@@ -792,6 +792,193 @@ def email_search(
         return 1
 
 
+def email_bulk_send(
+    roster_path: str,
+    subject: str,
+    body: str | None,
+    body_file: str | None,
+    html: bool,
+    from_name: str | None,
+    delay: float,
+    batch_size: int,
+    batch_delay: float,
+    dry_run: bool,
+) -> int:
+    """Send bulk emails with rate limiting."""
+    import csv
+    from pathlib import Path
+
+    from auth_utils.email import (
+        RateLimitConfig,
+        SMTPAuthError,
+        SMTPClient,
+        SMTPConnectionError,
+    )
+
+    print("=" * 60)
+    print("BULK EMAIL SEND (with rate limiting)")
+    print("=" * 60)
+    print()
+
+    # Validate inputs
+    if not body and not body_file:
+        print("Error: Must provide either --body or --body-file")
+        return 1
+
+    if body and body_file:
+        print("Error: Cannot use both --body and --body-file")
+        return 1
+
+    # Load body from file if specified
+    if body_file:
+        body_path = Path(body_file)
+        if not body_path.exists():
+            print(f"Error: Body file not found: {body_file}")
+            return 1
+        body = body_path.read_text()
+        print(f"Loaded body from: {body_file}")
+
+    # Load roster
+    roster_path_obj = Path(roster_path)
+    if not roster_path_obj.exists():
+        print(f"Error: Roster file not found: {roster_path}")
+        return 1
+
+    try:
+        with open(roster_path_obj) as f:
+            reader = csv.DictReader(f)
+            recipients = list(reader)
+    except Exception as e:
+        print(f"Error reading roster: {e}")
+        return 1
+
+    if not recipients:
+        print("Error: No recipients found in roster")
+        return 1
+
+    # Check for required 'email' column (case-insensitive)
+    first_row = recipients[0]
+    email_key = None
+    for key in first_row:
+        if key.lower() == "email":
+            email_key = key
+            break
+
+    if not email_key:
+        print("Error: Roster must have an 'email' column")
+        print(f"Found columns: {list(first_row.keys())}")
+        return 1
+
+    # Normalize email key if needed
+    if email_key != "email":
+        for r in recipients:
+            r["email"] = r.pop(email_key)
+
+    print(f"Roster: {roster_path}")
+    print(f"Recipients: {len(recipients)}")
+    print(f"Subject: {subject}")
+    print(f"HTML: {html}")
+    if from_name:
+        print(f"From name: {from_name}")
+    print()
+
+    # Show rate limit settings
+    config = RateLimitConfig(
+        delay_seconds=delay,
+        batch_size=batch_size,
+        batch_delay_seconds=batch_delay,
+        warn_on_unsafe=True,
+    )
+
+    print("Rate limiting:")
+    print(f"  Delay between emails: {config.delay_seconds}s")
+    print(f"  Batch size: {config.batch_size}")
+    print(f"  Batch delay: {config.batch_delay_seconds}s")
+    print()
+
+    # Dry run preview
+    if dry_run:
+        print("=" * 60)
+        print("DRY RUN - Preview only, no emails sent")
+        print("=" * 60)
+        print()
+
+        # Show first 3 recipients
+        for i, recipient in enumerate(recipients[:3]):
+            try:
+                formatted_subject = subject.format(**recipient)
+                formatted_body = body.format(**recipient)
+                print(f"[{i + 1}] To: {recipient['email']}")
+                print(f"    Subject: {formatted_subject}")
+                print(f"    Body preview: {formatted_body[:100]}...")
+                print()
+            except KeyError as e:
+                print(f"[{i + 1}] ERROR: Missing template key {e}")
+                print(f"    Available keys: {list(recipient.keys())}")
+                print()
+
+        if len(recipients) > 3:
+            print(f"... and {len(recipients) - 3} more recipients")
+
+        print()
+        print("To send for real, remove the --dry-run flag")
+        return 0
+
+    # Confirm send
+    estimated_time = (
+        len(recipients) * config.delay_seconds
+        + (len(recipients) // config.batch_size) * config.batch_delay_seconds
+    )
+    print(f"Estimated time: {estimated_time / 60:.1f} minutes")
+    print()
+
+    confirm = input(f"Send {len(recipients)} emails? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Aborted.")
+        return 0
+
+    # Send emails
+    try:
+        client = SMTPClient(provider="gmail")
+        print(f"\nSending as: {client.user}")
+        print()
+
+        def on_progress(sent: int, total: int, email: str) -> None:
+            print(f"[{sent}/{total}] Sent to {email}")
+
+        def on_error(email: str, error_type: str, exc: Exception) -> None:
+            print(f"FAILED: {email} - {error_type}: {exc}")
+
+        result = client.send_bulk(
+            recipients=recipients,
+            subject=subject,
+            body_template=body,
+            html=html,
+            from_name=from_name,
+            rate_limit=config,
+            on_progress=on_progress,
+            on_error=on_error,
+        )
+
+        return 0 if result.failed == 0 else 1
+
+    except SMTPAuthError as e:
+        print(f"\nAuthentication error: {e}")
+        print("\nTips:")
+        print("  - Ensure 2-Step Verification is enabled")
+        print("  - Generate an App Password")
+        return 1
+
+    except SMTPConnectionError as e:
+        print(f"\nConnection error: {e}")
+        print("\nThis may indicate rate limiting. Wait 1-24 hours and retry.")
+        return 1
+
+    except Exception as e:
+        print(f"\nError: {e}")
+        return 1
+
+
 # =============================================================================
 # Gmail API Commands
 # =============================================================================
@@ -2102,6 +2289,66 @@ def main(argv: list[str] | None = None) -> int:
         help="Max messages to return (default: 10)",
     )
 
+    # email bulk-send
+    email_bulk_parser = email_subparsers.add_parser(
+        "bulk-send", help="Send bulk emails with rate limiting"
+    )
+    email_bulk_parser.add_argument(
+        "--roster",
+        type=str,
+        required=True,
+        help="Path to CSV file with 'email' column (and optional personalization columns)",
+    )
+    email_bulk_parser.add_argument(
+        "--subject",
+        type=str,
+        required=True,
+        help="Email subject (use {column_name} for personalization)",
+    )
+    email_bulk_parser.add_argument(
+        "--body",
+        type=str,
+        help="Email body text (use {column_name} for personalization)",
+    )
+    email_bulk_parser.add_argument(
+        "--body-file",
+        type=str,
+        help="Path to file containing email body (HTML or text)",
+    )
+    email_bulk_parser.add_argument(
+        "--html",
+        action="store_true",
+        help="Send as HTML email",
+    )
+    email_bulk_parser.add_argument(
+        "--from-name",
+        type=str,
+        help="Display name for sender (e.g., 'Professor Smith')",
+    )
+    email_bulk_parser.add_argument(
+        "--delay",
+        type=float,
+        default=10,
+        help="Seconds between emails (default: 10, min: 3)",
+    )
+    email_bulk_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="Emails per batch before longer pause (default: 50)",
+    )
+    email_bulk_parser.add_argument(
+        "--batch-delay",
+        type=float,
+        default=60,
+        help="Seconds between batches (default: 60)",
+    )
+    email_bulk_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview emails without sending",
+    )
+
     # Gmail API subcommand
     gmail_parser = subparsers.add_parser("gmail", help="Gmail API management")
     gmail_subparsers = gmail_parser.add_subparsers(dest="gmail_command", help="Command")
@@ -2417,6 +2664,19 @@ def main(argv: list[str] | None = None) -> int:
                 args.subject,
                 args.since,
                 args.limit,
+            )
+        elif args.email_command == "bulk-send":
+            return email_bulk_send(
+                roster_path=args.roster,
+                subject=args.subject,
+                body=args.body,
+                body_file=args.body_file,
+                html=args.html,
+                from_name=args.from_name,
+                delay=args.delay,
+                batch_size=args.batch_size,
+                batch_delay=args.batch_delay,
+                dry_run=args.dry_run,
             )
         else:
             email_parser.print_help()
